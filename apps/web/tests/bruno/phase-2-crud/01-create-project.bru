@@ -1,0 +1,27 @@
+meta {
+  name: 01 Create Project
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/projects
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+  cookie: {{sessionCookie}}
+  origin: {{baseUrl}}
+  idempotency-key: bruno-create-project
+}
+
+body:json {
+  {
+    "name": "Bruno Phase 2 Project",
+    "project_number": "BR-200",
+    "gc_name": "Turner",
+    "architect_name": "SOM"
+  }
+}

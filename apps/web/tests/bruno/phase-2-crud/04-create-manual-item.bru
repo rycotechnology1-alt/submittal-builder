@@ -1,0 +1,32 @@
+meta {
+  name: 04 Create Manual Item
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v1/packages/{{packageId}}/items
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+  cookie: {{sessionCookie}}
+  origin: {{baseUrl}}
+  idempotency-key: bruno-create-manual-item
+}
+
+body:json {
+  {
+    "source_pdf_ids": [],
+    "doc_type": "product_data",
+    "title": "Ceiling Tile",
+    "attributes": {
+      "manufacturer": "Armstrong",
+      "model_number": "Ultima 1912",
+      "description": "Acoustical ceiling tile",
+      "spec_section_ref": "09 51 13"
+    }
+  }
+}

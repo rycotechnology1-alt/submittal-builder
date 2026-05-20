@@ -1,0 +1,16 @@
+meta {
+  name: 03 List Project Packages
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/projects/{{projectId}}/packages
+  body: none
+  auth: none
+}
+
+headers {
+  cookie: {{sessionCookie}}
+  origin: {{baseUrl}}
+}

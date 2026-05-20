@@ -4,6 +4,8 @@ import { updateWorkspaceRequestSchema } from '@submittal/shared/api';
 
 import { parseJson } from '@/server/api';
 import { db, schema } from '@/server/db';
+import { DOWNLOAD_URL_TTL_SECONDS } from '@/server/file-records';
+import { getStorage } from '@/server/storage';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
 import { workspaceJson } from '@/server/phase2-records';
 
@@ -14,7 +16,13 @@ export async function GET(req: Request) {
       .from(schema.workspaces)
       .where(eq(schema.workspaces.id, ctx.workspaceId))
       .limit(1);
-    return workspace ? workspaceJson(workspace) : null;
+    const logoUrl = workspace?.subCompanyLogoStorageKey
+      ? await getStorage().presignGetUrl({
+          key: workspace.subCompanyLogoStorageKey,
+          expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
+        })
+      : null;
+    return workspace ? workspaceJson(workspace, logoUrl) : null;
   });
 
   if (result instanceof Response) return result;

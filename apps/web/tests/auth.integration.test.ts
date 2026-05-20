@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import { POST as signupPOST } from '@/app/api/v1/auth/signup/route';
+import { POST as authCatchAllPOST } from '@/app/api/v1/auth/[...all]/route';
 import { GET as meGET } from '@/app/api/v1/me/route';
 import { auth } from '@/server/auth';
 import { db, schema } from '@/server/db';
@@ -180,6 +181,67 @@ describe('signup → /me → logout', () => {
       fakeReq('/api/v1/me', { headers: { cookie: jar.header() } }),
     );
     expect(meAfter.status).toBe(401);
+  });
+});
+
+describe('catch-all blocks better-auth built-in /sign-up/email', () => {
+  // Without this guard, a caller could POST to /api/v1/auth/sign-up/email with
+  // any workspaceId in the body (workspaceId is declared as an `input: true`
+  // additionalField on the user model) and land a brand-new user directly into
+  // a victim workspace — a tenant-takeover via workspace-ID injection. The
+  // catch-all must 404 this path before delegating to better-auth.
+
+  const emails: string[] = [];
+  const workspaceIds: string[] = [];
+
+  afterEach(async () => {
+    while (emails.length > 0) {
+      const e = emails.pop();
+      if (e) await deleteUserByEmail(e);
+    }
+    while (workspaceIds.length > 0) {
+      const id = workspaceIds.pop();
+      if (id) await db.delete(schema.workspaces).where(eq(schema.workspaces.id, id));
+    }
+  });
+
+  it('returns 404 and creates no user when POSTing to /sign-up/email with a forged workspaceId', async () => {
+    // 1. Set up a "victim" workspace the attacker will try to land in.
+    const [victim] = await db
+      .insert(schema.workspaces)
+      .values({ name: 'Victim WS', subCompanyName: 'Victim Sub' })
+      .returning({ id: schema.workspaces.id });
+    expect(victim).toBeDefined();
+    workspaceIds.push(victim!.id);
+
+    const attackerEmail = `vitest-attacker-${randomUUID()}@example.test`;
+    emails.push(attackerEmail);
+
+    // 2. POST to the better-auth built-in path via our catch-all wrapper.
+    const res = await authCatchAllPOST(
+      fakeReq('/api/v1/auth/sign-up/email', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: attackerEmail,
+          password: PASSWORD,
+          name: 'Attacker',
+          workspaceId: victim!.id,
+        }),
+      }),
+    );
+
+    // 3. The catch-all must reject this path with 404 in our envelope.
+    expect(res.status).toBe(404);
+    const env = (await res.json()) as { error?: { code?: string } };
+    expect(env.error?.code).toBe('not_found');
+
+    // 4. And the user MUST NOT have been created.
+    const rows = await db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.email, attackerEmail));
+    expect(rows).toHaveLength(0);
   });
 });
 

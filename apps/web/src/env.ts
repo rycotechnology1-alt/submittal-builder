@@ -28,7 +28,11 @@ const Env = z.object({
   // better-auth
   BETTER_AUTH_SECRET: z.string().min(16),
   BETTER_AUTH_URL: z.string().url(),
-  SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 30),
+  SESSION_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60 * 60 * 24 * 30),
 
   // Resend
   RESEND_API_KEY: z.string().min(1).optional(),
@@ -38,6 +42,14 @@ const Env = z.object({
   // Sentry
   SENTRY_DSN_WEB: z.string().url().optional(),
   SENTRY_ENVIRONMENT: z.string().default('development'),
+
+  // Object storage
+  AWS_REGION: z.string().default('us-east-1'),
+  S3_BUCKET: z.string().min(1).optional(),
+  S3_BUCKET_DEV: z.string().min(1).optional(),
+  S3_BUCKET_PROD: z.string().min(1).optional(),
+  AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
 });
 
 const parsed = Env.safeParse(process.env);
@@ -52,8 +64,8 @@ export const env = {
   ...e,
   // Effective DB URL: explicit DATABASE_URL > pooled-dev > direct-dev.
   // The web app uses pooled in prod; in dev we accept the direct URL too.
-  databaseUrl:
-    e.DATABASE_URL ?? e.DATABASE_URL_POOLED_DEV ?? e.DATABASE_URL_DIRECT_DEV ?? '',
+  databaseUrl: e.DATABASE_URL ?? e.DATABASE_URL_POOLED_DEV ?? e.DATABASE_URL_DIRECT_DEV ?? '',
+  s3Bucket: e.S3_BUCKET ?? e.S3_BUCKET_DEV ?? e.S3_BUCKET_PROD ?? '',
 };
 
 if (!env.databaseUrl) {

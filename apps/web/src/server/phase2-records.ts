@@ -1,15 +1,23 @@
 import { and, eq, isNull } from 'drizzle-orm';
 
-import type { Package, Project, Workspace, Item, ItemAttribute, SourcePdf } from '@submittal/db';
+import type {
+  Package,
+  Project,
+  Workspace,
+  Item,
+  ItemAttribute,
+  SourcePdf,
+  SourcePage,
+} from '@submittal/db';
 import { db, schema } from '@/server/db';
 import { iso, jsonError } from '@/server/api';
 
-export function workspaceJson(row: Workspace) {
+export function workspaceJson(row: Workspace, logoUrl: string | null = null) {
   return {
     id: row.id,
     name: row.name,
     sub_company_name: row.subCompanyName,
-    sub_company_logo_url: null,
+    sub_company_logo_url: logoUrl,
     created_at: iso(row.createdAt),
     updated_at: iso(row.updatedAt),
   };
@@ -85,6 +93,22 @@ export function itemSourcePdfJson(row: SourcePdf) {
   };
 }
 
+export function sourcePdfJson(row: SourcePdf) {
+  return {
+    id: row.id,
+    package_id: row.packageId,
+    original_filename: row.originalFilename,
+    storage_key: row.storageKey,
+    byte_size: row.byteSize,
+    sha256: row.sha256,
+    page_count: row.pageCount,
+    processing_status: row.processingStatus,
+    processing_error: row.processingError,
+    created_at: iso(row.createdAt),
+    updated_at: iso(row.updatedAt),
+  };
+}
+
 export async function findLiveProject(workspaceId: string, projectId: string) {
   const [project] = await db
     .select()
@@ -132,6 +156,38 @@ export async function findLiveItem(workspaceId: string, itemId: string) {
   if (!item) return null;
   const pkg = await findLivePackage(workspaceId, item.packageId);
   return pkg ? item : null;
+}
+
+export async function findSourcePdfInLivePackage(workspaceId: string, sourcePdfId: string) {
+  const [sourcePdf] = await db
+    .select()
+    .from(schema.sourcePdfs)
+    .where(
+      and(eq(schema.sourcePdfs.id, sourcePdfId), eq(schema.sourcePdfs.workspaceId, workspaceId)),
+    )
+    .limit(1);
+  if (!sourcePdf) return null;
+  const pkg = await findLivePackage(workspaceId, sourcePdf.packageId);
+  return pkg ? sourcePdf : null;
+}
+
+export async function findSourcePageInLivePackage(workspaceId: string, sourcePageId: string) {
+  const [row] = await db
+    .select({
+      page: schema.sourcePages,
+      pdf: schema.sourcePdfs,
+    })
+    .from(schema.sourcePages)
+    .innerJoin(schema.sourcePdfs, eq(schema.sourcePages.sourcePdfId, schema.sourcePdfs.id))
+    .where(
+      and(eq(schema.sourcePages.id, sourcePageId), eq(schema.sourcePdfs.workspaceId, workspaceId)),
+    )
+    .limit(1);
+  if (!row) return null;
+  const pkg = await findLivePackage(workspaceId, row.pdf.packageId);
+  return pkg
+    ? ({ page: row.page, sourcePdf: row.pdf } satisfies { page: SourcePage; sourcePdf: SourcePdf })
+    : null;
 }
 
 export function notFound() {

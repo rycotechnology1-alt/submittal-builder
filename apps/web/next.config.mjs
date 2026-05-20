@@ -4,6 +4,7 @@ const nextConfig = {
   // Transpile workspace packages so they pick up the same compile pipeline as
   // app code.
   transpilePackages: ['@submittal/db', '@submittal/shared'],
+  serverExternalPackages: ['sharp', 'pdf-to-img', 'pdfjs-dist'],
   experimental: {
     serverActions: { allowedOrigins: ['localhost:3000'] },
   },

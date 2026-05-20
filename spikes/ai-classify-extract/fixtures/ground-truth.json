@@ -1,0 +1,80 @@
+{
+  "_notes": "Ground truth for accuracy grading. Each entry lists the canonical value plus 'acceptable_variants' the grader will accept. Use null when the PDF does not contain the field — the model is expected to return null in that case too (correctness = both null).",
+  "fixtures": [
+    {
+      "file": "01-daikin-vrv-cutsheet.pdf",
+      "doc_type": "cut_sheet",
+      "attributes": {
+        "manufacturer": {
+          "canonical": "Johnson Controls",
+          "acceptable_variants": ["Johnson Controls, Inc.", "Daikin", "Daikin / Johnson Controls"],
+          "note": "PDF title block says 'Daikin VRV' but the © line and product brand are Johnson Controls — VRV technology is licensed. Both answers are defensible."
+        },
+        "model_number": {
+          "canonical": "(H,Y)VAHR072B31S",
+          "acceptable_variants": ["VAHR072B31S", "HVAHR072B31S", "YVAHR072B31S"],
+          "note": "The parenthesized (H,Y) prefix indicates two heat-mode variants of the same base model."
+        },
+        "description": {
+          "canonical": "6-ton VRV heat recovery outdoor unit, 208/230V/3PH/60Hz",
+          "acceptable_variants": ["VRV outdoor unit", "Heat recovery outdoor unit", "VRV heat recovery condensing unit"],
+          "note": "Any answer that captures 'VRV' + 'heat recovery' + 'outdoor unit' is fine."
+        },
+        "spec_section_ref": {
+          "canonical": null,
+          "acceptable_variants": ["23 81 26", "23 64 23", "23 81 00"],
+          "note": "PDF does not state a CSI section. Model SHOULD return null. If it makes a plausible inference from category, accept any 23 8x xx section but flag in ACCURACY.md."
+        }
+      }
+    },
+    {
+      "file": "02-hardie-warranty.pdf",
+      "doc_type": "warranty",
+      "attributes": {
+        "manufacturer": {
+          "canonical": "James Hardie",
+          "acceptable_variants": ["James Hardie Building Products, Inc.", "James Hardie Building Products"]
+        },
+        "model_number": {
+          "canonical": null,
+          "acceptable_variants": ["HS2401", "Hardie Plank HZ5"],
+          "note": "Warranty covers multiple products (Plank, Panel, Shingle, Trim, Soffit, Artisan, Architectural). No single model number. Document code 'HS2401' is the doc ID, not a product model. Model SHOULD return null OR a reasonable product family name."
+        },
+        "description": {
+          "canonical": "30-Year Limited Product Warranty for Hardie siding and trim products",
+          "acceptable_variants": ["Express Limited Product Warranty", "30-year limited warranty", "Limited product warranty"]
+        },
+        "spec_section_ref": {
+          "canonical": null,
+          "acceptable_variants": ["07 46 46"],
+          "note": "Not stated in the PDF. CSI section for fiber-cement siding is 07 46 46. Model SHOULD return null."
+        }
+      }
+    },
+    {
+      "file": "03-woodwork-shopdrawings.pdf",
+      "doc_type": "shop_drawing",
+      "attributes": {
+        "manufacturer": {
+          "canonical": null,
+          "acceptable_variants": ["Woodwork Institute", "Sample / N/A"],
+          "note": "This is a SAMPLE drawing set published by the Woodwork Institute as an exemplar, not a real fabricator's submittal. The title blocks may name a sample fabricator. Model SHOULD return null or the sample-fabricator name found on the title block."
+        },
+        "model_number": {
+          "canonical": null,
+          "acceptable_variants": [],
+          "note": "Shop drawings don't have product model numbers — they have drawing/sheet numbers. Model SHOULD return null."
+        },
+        "description": {
+          "canonical": "Architectural woodwork shop drawings — casework, paneling, sections, elevations",
+          "acceptable_variants": ["Sample shop drawings", "Architectural millwork shop drawings", "Casework shop drawings"]
+        },
+        "spec_section_ref": {
+          "canonical": null,
+          "acceptable_variants": ["06 41 00", "06 40 00", "06 42 00"],
+          "note": "Not necessarily stated. CSI division 06 4x xx covers architectural woodwork / casework. Model SHOULD return null OR a 06 4x xx inference if it spots a section reference."
+        }
+      }
+    }
+  ]
+}

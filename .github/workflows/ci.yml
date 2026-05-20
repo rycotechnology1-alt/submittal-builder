@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Pretend secrets for lint/typecheck — env.ts validation needs them
+      # populated. Real values only flow into the integration job (which
+      # Phase 1 does not yet run in CI — see step-8-phase-1-handoff.md).
+      BETTER_AUTH_SECRET: 'ci-placeholder-secret-at-least-16-chars'
+      BETTER_AUTH_URL: 'http://localhost:3000'
+      DATABASE_URL: 'postgresql://ci:ci@localhost:5432/ci'
+      RESEND_API_KEY: 'ci-placeholder'
+      EMAIL_FROM: 'ci@example.com'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Drizzle schema drift check
+        run: pnpm db:generate
+        env:
+          DATABASE_URL_DIRECT_DEV: 'postgresql://ci:ci@localhost:5432/ci'
+      - name: Fail if schema generated an uncommitted migration
+        run: |
+          if [ -n "$(git status --porcelain packages/db/drizzle)" ]; then
+            echo "drizzle/ has uncommitted changes — schema and migrations are out of sync"
+            git status --porcelain packages/db/drizzle
+            git diff packages/db/drizzle
+            exit 1
+          fi
+
+      - name: Unit tests
+        run: pnpm test

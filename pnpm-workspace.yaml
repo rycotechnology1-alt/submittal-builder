@@ -1,0 +1,21 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Allow native postinstall build scripts for transitive deps that need them.
+# pnpm 10+ blocks postinstall by default; we explicitly opt these in:
+#   @sentry/cli   — Sentry source-map upload CLI (Phase 6 deploy step)
+#   esbuild       — required by vite/vitest/tsx for TS transpile
+#   sharp         — Next.js image optimization + Phase 4 page render
+#   unrs-resolver — eslint TS path resolver
+allowBuilds:
+  '@sentry/cli': true
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+
+onlyBuiltDependencies:
+  - '@sentry/cli'
+  - esbuild
+  - sharp
+  - unrs-resolver

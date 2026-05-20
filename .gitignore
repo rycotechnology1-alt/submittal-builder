@@ -130,4 +130,3 @@ temp/
 *.tmp
 *.bak
 *.orig
-.env.example

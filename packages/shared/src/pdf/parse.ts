@@ -1,3 +1,5 @@
+import type * as Pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+
 const OCR_TEXT_THRESHOLD = 50;
 
 export type ParsedPdfPage = {
@@ -11,8 +13,18 @@ export type ParsedPdf = {
   pages: ParsedPdfPage[];
 };
 
+async function loadPdfjs() {
+  if (process.env.VITEST) {
+    return import('pdfjs-dist/legacy/build/pdf.mjs');
+  }
+  const runtimeImport = new Function('specifier', 'return import(specifier)') as (
+    specifier: string,
+  ) => Promise<typeof Pdfjs>;
+  return runtimeImport('pdfjs-dist/legacy/build/pdf.mjs');
+}
+
 export async function parsePdfPages(bytes: Uint8Array): Promise<ParsedPdf> {
-  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const { getDocument } = await loadPdfjs();
   const document = await getDocument({
     data: bytes.slice(),
     disableFontFace: true,

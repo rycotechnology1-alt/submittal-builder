@@ -1,6 +1,6 @@
 # Phase 1 Handoff — Scaffold, DB schema, auth, notifications, tenancy
 
-Phase 1 is **complete**. A developer can now run `pnpm dev`, sign up at `POST /api/v1/auth/signup`, receive a Resend verification email, click the link to verify, sign in via `POST /api/v1/auth/sign-in/email`, hit `GET /api/v1/me` for `{ user, workspace }`, and sign out. The integration test (`pnpm test`) passes 5/5 against the live Neon dev branch.
+Phase 1 is **complete**. A developer can now run `pnpm dev`, sign up at `POST /api/v1/auth/signup`, receive a Resend verification email, click the link to verify, sign in via `POST /api/v1/auth/sign-in/email`, hit `GET /api/v1/me` for `{ user, workspace }`, and sign out. The integration test (`pnpm test`) passes 6/6 against the live Neon dev branch.
 
 ## What was built
 
@@ -128,7 +128,7 @@ apps/
           healthz/route.ts
           debug-sentry/route.ts                deliberate throw (dev only)
     tests/
-      auth.integration.test.ts                 5 tests, all pass
+      auth.integration.test.ts                 6 tests, all pass
       helpers/cookie-jar.ts, test-db.ts
 
   worker/
@@ -216,7 +216,7 @@ No new variables — Phase 1 consumes the matrix that Phase 0 committed to [.env
 
 6. **`/auth/sign-out` requires both `Cookie` AND `Origin: http://localhost:3000` (or whatever `BETTER_AUTH_URL` is set to).** Documented for the Phase 9 frontend agent. Without `Origin` it returns 403 `MISSING_OR_NULL_ORIGIN`; without `Content-Type: application/json` it returns 415. Browser fetch sets both automatically when calling same-origin.
 
-7. **better-auth `disableSignUp` is NOT set.** The catch-all still serves `/api/v1/auth/sign-up/email`, which bypasses our custom workspace-creating wrapper. Frontend should hit `/api/v1/auth/signup` (our custom path). Before Phase 6: either set `disableSignUp: true` and call `auth.api.signUpEmail` server-internally only, or document the dual-path clearly. Currently a small footgun.
+7. **~~better-auth `disableSignUp` is NOT set.~~ RESOLVED — tenant-takeover via `/sign-up/email` is now blocked.** The original issue was worse than "a small footgun": because `workspaceId` is declared as an `input: true` `additionalField`, a caller could POST to `/api/v1/auth/sign-up/email` with `{email, password, name, workspaceId: <victim-uuid>}` and land a brand-new user directly inside any workspace whose UUID they could guess — a tenant-takeover via workspace-ID injection. `disableSignUp: true` could not be used because better-auth checks that flag inside the same handler that our custom `/auth/signup` wrapper invokes via `auth.api.signUpEmail`, so it would have broken our legitimate signup path. Fix landed: [apps/web/src/app/api/v1/auth/[...all]/route.ts](apps/web/src/app/api/v1/auth/[...all]/route.ts) now wraps `toNextJsHandler(auth)` with a URL-path guard that 404s `/api/v1/auth/sign-up/email` (with our `{error:{code:"not_found"}}` envelope) before the request ever reaches better-auth. Server-internal `auth.api.signUpEmail` calls bypass the HTTP catch-all entirely, so the custom signup wrapper is unaffected. Regression test in [apps/web/tests/auth.integration.test.ts](apps/web/tests/auth.integration.test.ts) provisions a "victim" workspace, attempts the takeover with a forged `workspaceId`, and asserts 404 + no user row written.
 
 8. **`packages/db/drizzle.config.ts` uses `process.cwd()` to find the repo root.** Works because drizzle-kit cwds into `packages/db`. If a future script invokes drizzle-kit from a different directory, the env load will silently miss `.env.local`.
 
@@ -230,7 +230,7 @@ Per [step-8-buildplan.md:55](step-8-buildplan.md):
 
 - [x] `pnpm dev` boots web + worker. Web on `:3000`, worker `/healthz` on `:8080`.
 - [x] New user can sign up → receive Resend verification email → click → log in → `GET /api/v1/me` → log out. **Done live** with `rycotechnology1@gmail.com`. The flow returned the exact contract-shaped responses end-to-end.
-- [x] `pnpm test` passes the signup → /me → logout integration test. **5/5 tests pass** against the real Neon dev branch (≈3.5s).
+- [x] `pnpm test` passes the signup → /me → logout integration test. **6/6 tests pass** against the real Neon dev branch (≈3s), including the tenant-takeover regression test described under Security hardening below.
 - [x] Drizzle Studio shows all tables. Schema verifier (`src/verify.ts`) confirms 13/13.
 - [x] Migration runs idempotently on Neon dev branch.
 - [x] Sentry receives a deliberate throw (web project). Confirmed by user.

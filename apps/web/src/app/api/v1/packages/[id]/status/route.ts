@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
+import { latestProcessingJobsForPackage } from '@submittal/db';
 
 import { type RouteContext, uuidParam } from '@/server/api';
 import { db, schema } from '@/server/db';
@@ -28,10 +29,7 @@ export async function GET(req: Request, context: RouteContext<{ id: string }>) {
             eq(schema.sourcePdfs.packageId, pkg.id),
           ),
         ),
-      db
-        .select({ status: schema.processingJobs.status })
-        .from(schema.processingJobs)
-        .where(eq(schema.processingJobs.packageId, pkg.id)),
+      latestProcessingJobsForPackage(db, pkg.id),
     ]);
 
     return {

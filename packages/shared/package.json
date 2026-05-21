@@ -10,6 +10,8 @@
     "./ai": "./src/ai/index.ts",
     "./ocr": "./src/ocr/index.ts",
     "./pdf": "./src/pdf/index.ts",
+    "./pdf/parse": "./src/pdf/parse.ts",
+    "./pdf/render": "./src/pdf/render.ts",
     "./storage": "./src/storage/index.ts"
   },
   "scripts": {
@@ -18,7 +20,9 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.97.1",
     "@aws-sdk/client-s3": "^3.1050.0",
+    "@aws-sdk/client-textract": "^3.1050.0",
     "@aws-sdk/s3-request-presigner": "^3.1050.0",
     "pdf-to-img": "^6.1.0",
     "pdfjs-dist": "^5.6.205",

@@ -24,4 +24,14 @@ export const env = {
   healthzPort: Number.parseInt(process.env.WORKER_HEALTHZ_PORT ?? '8080', 10),
   sentryDsn: process.env.SENTRY_DSN_WORKER ?? null,
   sentryEnvironment: process.env.SENTRY_ENVIRONMENT ?? 'development',
+  awsRegion: process.env.AWS_REGION ?? 'us-east-1',
+  s3Bucket: process.env.S3_BUCKET ?? process.env.S3_BUCKET_DEV ?? process.env.S3_BUCKET_PROD ?? '',
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
+  anthropicClassifyModel: process.env.ANTHROPIC_CLASSIFY_MODEL ?? 'claude-sonnet-4-6',
+  anthropicExtractModel: process.env.ANTHROPIC_EXTRACT_MODEL ?? 'claude-sonnet-4-6',
+  concurrency: {
+    ocr: Number.parseInt(process.env.PGBOSS_CONCURRENCY_OCR ?? '4', 10),
+    classify: Number.parseInt(process.env.PGBOSS_CONCURRENCY_CLASSIFY ?? '8', 10),
+    extract: Number.parseInt(process.env.PGBOSS_CONCURRENCY_EXTRACT ?? '8', 10),
+  },
 };

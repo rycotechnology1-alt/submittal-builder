@@ -18,7 +18,8 @@
     "db:studio": "pnpm --filter @submittal/db run studio",
     "db:seed": "pnpm --filter @submittal/db run seed",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}\" --ignore-path .gitignore",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}\" --ignore-path .gitignore"
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}\" --ignore-path .gitignore",
+    "smoke:phase4": "pnpm --filter @submittal/web run smoke:phase4"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

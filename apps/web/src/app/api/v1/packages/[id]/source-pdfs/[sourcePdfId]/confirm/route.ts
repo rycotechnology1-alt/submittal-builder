@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { and, eq, ne } from 'drizzle-orm';
-import { parsePdfPages } from '@submittal/shared/pdf';
+import { parsePdfPages } from '@submittal/shared/pdf/parse';
 import { sourcePdfConfirmRequestSchema } from '@submittal/shared/api';
 
 import { jsonError, parseJson, type RouteContext, uuidParam } from '@/server/api';

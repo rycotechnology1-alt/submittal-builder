@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --max-warnings=0",
-    "test": "vitest run"
+    "test": "vitest run",
+    "sourcemaps:upload": "npx --yes @sentry/cli@^2 sourcemaps upload --release ${SENTRY_RELEASE:-${GIT_SHA:-unknown}} dist"
   },
   "dependencies": {
     "@sentry/node": "^8.50.0",

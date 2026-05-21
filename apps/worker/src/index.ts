@@ -5,6 +5,7 @@ import {
   createQueuedProcessingJobAttempt,
   getDb,
   getLatestProcessingJob,
+  getProcessingJobsHealth,
 } from '@submittal/db';
 import { createAnthropicAiClient } from '@submittal/shared/ai';
 import { createTextractOcrClient } from '@submittal/shared/ocr';
@@ -69,11 +70,53 @@ async function enqueueChainedJob(kind: JobKind, data: SourcePdfJobData) {
     kind,
   });
 
+  // Preserve the originating request_id across the chain so worker logs stay
+  // correlated to the web request that kicked off processing.
   await boss.send(kind, data, {
     singletonKey: `${kind}:${sourcePdfId ?? data.packageId}`,
     retryLimit: 3,
     retryBackoff: true,
   });
+}
+
+type JobContext = { workspaceId: string; packageId: string; requestId?: string; sourcePdfId?: string; exportId?: string };
+
+async function runWithLogging<T>(
+  kind: JobKind,
+  data: JobContext,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const started = Date.now();
+  const base = {
+    component: 'worker',
+    kind,
+    request_id: data.requestId ?? null,
+    workspace_id: data.workspaceId,
+    package_id: data.packageId,
+    source_pdf_id: data.sourcePdfId ?? null,
+    export_id: data.exportId ?? null,
+  };
+  console.log({ level: 'info', msg: 'job_start', ...base });
+  try {
+    const result = await fn();
+    console.log({
+      level: 'info',
+      msg: 'job_done',
+      ...base,
+      duration_ms: Date.now() - started,
+    });
+    return result;
+  } catch (err) {
+    console.error({
+      level: 'error',
+      msg: 'job_failed',
+      ...base,
+      duration_ms: Date.now() - started,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    Sentry.captureException(err, { tags: { kind, request_id: data.requestId ?? '' } });
+    throw err;
+  }
 }
 
 function requireStorage() {
@@ -99,17 +142,19 @@ async function registerWorkers() {
 
   await boss.work<SourcePdfJobData>('ocr', { batchSize: env.concurrency.ocr }, async (jobs) => {
     for (const job of jobs) {
-      await runOcrJob(
-        {
-          db,
-          storage: requireStorage(),
-          bucket: env.s3Bucket,
-          ocr,
-          enqueue: async (name, data) => {
-            await enqueueChainedJob(name as JobKind, data);
+      await runWithLogging('ocr', job.data, () =>
+        runOcrJob(
+          {
+            db,
+            storage: requireStorage(),
+            bucket: env.s3Bucket,
+            ocr,
+            enqueue: async (name, data) => {
+              await enqueueChainedJob(name as JobKind, data);
+            },
           },
-        },
-        job.data,
+          job.data,
+        ),
       );
     }
   });
@@ -119,22 +164,25 @@ async function registerWorkers() {
     { batchSize: env.concurrency.classify },
     async (jobs) => {
       for (const job of jobs) {
-        await runClassifyJob(
-          {
-            db,
-            storage: requireStorage(),
-            ai: requireAi(),
-          },
-          job.data,
-        );
-        await enqueueChainedJob('extract', job.data);
+        await runWithLogging('classify', job.data, async () => {
+          await runClassifyJob(
+            {
+              db,
+              storage: requireStorage(),
+              ai: requireAi(),
+            },
+            job.data,
+          );
+          await enqueueChainedJob('extract', job.data);
+        });
       }
     },
   );
 
   await boss.work<SourcePdfJobData>('extract', { batchSize: env.concurrency.extract }, async (jobs) => {
     for (const job of jobs) {
-        await runExtractJob(
+      await runWithLogging('extract', job.data, () =>
+        runExtractJob(
           {
             db,
             storage: requireStorage(),
@@ -144,19 +192,27 @@ async function registerWorkers() {
             },
           },
           job.data,
-        );
+        ),
+      );
     }
   });
 
-  await boss.work<{ workspaceId: string; packageId: string }>('batch_order', async (jobs) => {
-    for (const job of jobs) {
-      await runBatchOrderJob({ db }, job.data);
-    }
-  });
+  await boss.work<{ workspaceId: string; packageId: string; requestId?: string }>(
+    'batch_order',
+    async (jobs) => {
+      for (const job of jobs) {
+        await runWithLogging('batch_order', job.data, () =>
+          runBatchOrderJob({ db }, job.data),
+        );
+      }
+    },
+  );
 
   await boss.work<RenderExportJobData>('render_export', async (jobs) => {
     for (const job of jobs) {
-      await runRenderExportJob({ db, storage: requireStorage() }, job.data);
+      await runWithLogging('render_export', job.data, () =>
+        runRenderExportJob({ db, storage: requireStorage() }, job.data),
+      );
     }
   });
 }
@@ -168,20 +224,28 @@ async function queueDepthByTopic() {
   return Object.fromEntries(entries);
 }
 
+const gitSha =
+  process.env.GIT_SHA ?? process.env.FLY_MACHINE_VERSION ?? process.env.VERCEL_GIT_COMMIT_SHA ?? null;
+const release = process.env.SENTRY_RELEASE ?? gitSha;
+
 async function startHealthz(): Promise<http.Server> {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       if (req.url === '/healthz') {
-        void queueDepthByTopic()
-          .then((depth) => {
+        Promise.all([queueDepthByTopic(), getProcessingJobsHealth(db)])
+          .then(([depth, health]) => {
             res.writeHead(200, { 'content-type': 'application/json' });
             res.end(
               JSON.stringify({
                 status: 'ok',
                 ts: new Date().toISOString(),
+                git_sha: gitSha,
+                release,
                 queue_depth_by_topic: depth,
-                error_rate_5m: 0,
-                oldest_job_age_s: 0,
+                error_rate_5m: Number(health.errorRate5m.toFixed(4)),
+                oldest_job_age_s: health.oldestJobAgeS,
+                failed_5m: health.failed5m,
+                finished_5m: health.finished5m,
               }),
             );
           })

@@ -10,6 +10,7 @@ import {
   findLivePackage,
   notFound,
 } from '@/server/phase2-records';
+import { requestIdFrom } from '@/server/request-id';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
 
 export async function GET(req: Request, context: RouteContext<{ id: string }>) {
@@ -38,6 +39,7 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
   if (id instanceof Response) return id;
   const body = await parseJson(req, createExportRequestSchema);
   if (body instanceof Response) return body;
+  const requestId = requestIdFrom(req.headers);
 
   const result = await withWorkspaceFromHeaders(req.headers, async (ctx) => {
     const pkg = await findLivePackage(ctx.workspaceId, id);
@@ -72,6 +74,7 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
         workspaceId: ctx.workspaceId,
         packageId: pkg.id,
         exportId: created.id,
+        requestId,
       },
       {
         singletonKey: `render_export:${created.id}`,
@@ -80,9 +83,21 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
       },
     );
 
+    console.log({
+      level: 'info',
+      msg: 'export_requested',
+      request_id: requestId,
+      export_id: created.id,
+      package_id: pkg.id,
+      workspace_id: ctx.workspaceId,
+    });
+
     return { export_id: created.id };
   });
 
   if (result instanceof Response) return result;
-  return NextResponse.json(result, { status: 202 });
+  return NextResponse.json(result, {
+    status: 202,
+    headers: { 'x-request-id': requestId },
+  });
 }

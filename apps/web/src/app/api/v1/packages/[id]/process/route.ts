@@ -6,6 +6,7 @@ import { type RouteContext, uuidParam } from '@/server/api';
 import { db, schema } from '@/server/db';
 import { getProcessingQueue } from '@/server/processing-queue';
 import { findLivePackage, notFound } from '@/server/phase2-records';
+import { requestIdFrom } from '@/server/request-id';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
 
 type JobKind = 'ocr' | 'classify' | 'extract' | 'batch_order';
@@ -20,6 +21,7 @@ async function enqueueProcessingJob(input: {
   workspaceId: string;
   kind: JobKind;
   sourcePdfId: string | null;
+  requestId: string;
 }): Promise<boolean> {
   const latest = await getLatestProcessingJob(db, input);
   if (latest && ['queued', 'running', 'succeeded'].includes(latest.status)) return false;
@@ -36,6 +38,7 @@ async function enqueueProcessingJob(input: {
       packageId: input.packageId,
       workspaceId: input.workspaceId,
       sourcePdfId: input.sourcePdfId,
+      requestId: input.requestId,
     },
     {
       ...JOB_OPTIONS,
@@ -49,6 +52,7 @@ async function enqueueProcessingJob(input: {
 export async function POST(req: Request, context: RouteContext<{ id: string }>) {
   const id = await uuidParam(context, 'id');
   if (id instanceof Response) return id;
+  const requestId = requestIdFrom(req.headers);
 
   const result = await withWorkspaceFromHeaders(req.headers, async (ctx) => {
     const pkg = await findLivePackage(ctx.workspaceId, id);
@@ -95,6 +99,7 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
           workspaceId: ctx.workspaceId,
           kind: 'ocr',
           sourcePdfId: pdf.id,
+          requestId,
         });
         if (didEnqueue) {
           enqueued.ocr++;
@@ -111,6 +116,7 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
         workspaceId: ctx.workspaceId,
         kind: 'classify',
         sourcePdfId: pdf.id,
+        requestId,
       });
       if (didEnqueue) {
         enqueued.classify++;
@@ -121,6 +127,15 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
       }
     }
 
+    console.log({
+      level: 'info',
+      msg: 'process_requested',
+      request_id: requestId,
+      package_id: pkg.id,
+      workspace_id: ctx.workspaceId,
+      enqueued,
+    });
+
     return {
       status: 'processing',
       enqueued,
@@ -128,5 +143,8 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
   });
 
   if (result instanceof Response) return result;
-  return NextResponse.json(result, { status: 202 });
+  return NextResponse.json(result, {
+    status: 202,
+    headers: { 'x-request-id': requestId },
+  });
 }

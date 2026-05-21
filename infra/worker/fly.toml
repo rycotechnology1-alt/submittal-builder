@@ -1,0 +1,57 @@
+# Fly.io configuration for the Submittal Builder worker.
+# Phase 6 deliverable. Deploy from the repo root:
+#   fly deploy -c infra/worker/fly.toml --dockerfile infra/worker/Dockerfile
+#
+# The worker is a long-running pg-boss host. The /healthz endpoint returns
+# queue_depth_by_topic, error_rate_5m, and oldest_job_age_s (apps/worker/src/index.ts).
+
+app = "submittal-worker"
+primary_region = "iad"
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  WORKER_HEALTHZ_PORT = "8080"
+  SENTRY_ENVIRONMENT = "production"
+  PGBOSS_CONCURRENCY_OCR = "4"
+  PGBOSS_CONCURRENCY_CLASSIFY = "8"
+  PGBOSS_CONCURRENCY_EXTRACT = "8"
+  AWS_REGION = "us-east-1"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+# Hits worker /healthz every 15s per step-8-buildplan.md Phase 6. The endpoint
+# is a JSON ping; 200 means pg-boss + DB are reachable. Any other status burns
+# down the machine and Fly restarts it.
+[[services.http_checks]]
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "30s"
+  method = "GET"
+  path = "/healthz"
+  protocol = "http"
+
+[deploy]
+  release_command = "node -e \"console.log('worker release: ' + (process.env.GIT_SHA || process.env.FLY_MACHINE_VERSION || 'unknown'))\""
+  strategy = "rolling"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "1gb"

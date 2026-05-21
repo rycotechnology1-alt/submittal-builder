@@ -1,3 +1,5 @@
+import { withSentryConfig } from '@sentry/nextjs';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -5,6 +7,7 @@ const nextConfig = {
   // app code.
   transpilePackages: ['@submittal/db', '@submittal/shared'],
   serverExternalPackages: ['sharp', 'pdf-to-img', 'pdfjs-dist'],
+  productionBrowserSourceMaps: true,
   experimental: {
     serverActions: { allowedOrigins: ['localhost:3000'] },
   },
@@ -22,4 +25,22 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+// Phase 6: upload source maps to Sentry on every deploy. The plugin runs only
+// when SENTRY_AUTH_TOKEN + SENTRY_ORG + SENTRY_PROJECT_WEB are set in the
+// build environment (Vercel project env vars). On local builds without those,
+// withSentryConfig still wraps the build but skips the upload step.
+const sentryBuildOptions = {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT_WEB,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  // Hide source maps from the production bundle but still upload them.
+  hideSourceMaps: true,
+  widenClientFileUpload: true,
+  disableLogger: true,
+  release: {
+    name: process.env.SENTRY_RELEASE ?? process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GIT_SHA,
+  },
+};
+
+export default withSentryConfig(nextConfig, sentryBuildOptions);

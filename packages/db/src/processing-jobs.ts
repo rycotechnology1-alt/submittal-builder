@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 
 import { type Db, schema } from './client.js';
 import type { ProcessingJob } from './schema.js';
@@ -118,6 +118,52 @@ export async function finishProcessingJobAttempt(
     .where(eq(schema.processingJobs.id, latestRunning.id))
     .returning();
   return job ?? null;
+}
+
+export type ProcessingJobsHealth = {
+  /** Failed attempts in the last 5 minutes / total finished in the same window. 0 when there are no finished jobs. */
+  errorRate5m: number;
+  /** Age in seconds of the oldest 'queued' or 'running' attempt. 0 when nothing is in flight. */
+  oldestJobAgeS: number;
+  /** Number of failed attempts in the last 5 minutes (for log/observability). */
+  failed5m: number;
+  /** Total attempts that reached a terminal state (succeeded|failed) in the last 5 minutes. */
+  finished5m: number;
+};
+
+/**
+ * Aggregate stats for the worker /healthz endpoint. Reads directly from the
+ * app-owned `processing_jobs` table — pg-boss internal tables are intentionally
+ * not consulted so this matches what users see in the status APIs.
+ */
+export async function getProcessingJobsHealth(db: Db): Promise<ProcessingJobsHealth> {
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+  const [windowRow] = await db
+    .select({
+      finished: sql<number>`count(*) filter (where ${schema.processingJobs.status} in ('succeeded','failed'))`,
+      failed: sql<number>`count(*) filter (where ${schema.processingJobs.status} = 'failed')`,
+    })
+    .from(schema.processingJobs)
+    .where(gte(schema.processingJobs.finishedAt, fiveMinAgo));
+
+  const finished5m = Number(windowRow?.finished ?? 0);
+  const failed5m = Number(windowRow?.failed ?? 0);
+  const errorRate5m = finished5m === 0 ? 0 : failed5m / finished5m;
+
+  const [oldestRow] = await db
+    .select({
+      oldest: sql<Date | null>`min(${schema.processingJobs.createdAt})`,
+    })
+    .from(schema.processingJobs)
+    .where(
+      sql`${schema.processingJobs.status} in ('queued','running')`,
+    );
+
+  const oldest = oldestRow?.oldest ? new Date(oldestRow.oldest) : null;
+  const oldestJobAgeS = oldest ? Math.max(0, Math.floor((Date.now() - oldest.getTime()) / 1000)) : 0;
+
+  return { errorRate5m, oldestJobAgeS, failed5m, finished5m };
 }
 
 export async function latestProcessingJobsForPackage(db: Db, packageId: string) {

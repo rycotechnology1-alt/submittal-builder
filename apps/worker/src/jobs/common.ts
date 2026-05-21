@@ -8,11 +8,15 @@ export type SourcePdfJobData = {
   workspaceId: string;
   packageId: string;
   sourcePdfId: string;
+  /** Correlation id propagated from the originating web request. */
+  requestId?: string;
 };
 
 export type PackageJobData = {
   workspaceId: string;
   packageId: string;
+  /** Correlation id propagated from the originating web request. */
+  requestId?: string;
 };
 
 export type JobKind = 'ocr' | 'classify' | 'extract' | 'batch_order' | 'render_export';
@@ -21,6 +25,8 @@ export type RenderExportJobData = {
   workspaceId: string;
   packageId: string;
   exportId: string;
+  /** Correlation id propagated from the originating web request. */
+  requestId?: string;
 };
 
 export async function markJobRunning(db: Db, data: PackageJobData, kind: JobKind, sourcePdfId?: string) {

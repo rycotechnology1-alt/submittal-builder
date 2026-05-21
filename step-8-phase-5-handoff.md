@@ -330,9 +330,3 @@ from packages
 where status = 'processing' and updated_at < now() - interval '1 hour';
 ```
 
-Recommended first command for the next agent:
-
-```powershell
-pnpm db:migrate
-pnpm test
-```

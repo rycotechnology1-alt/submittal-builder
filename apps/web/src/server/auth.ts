@@ -57,9 +57,9 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: true,
+    requireEmailVerification: false,
     minPasswordLength: 8,
-    autoSignIn: false,
+    autoSignIn: true,
     // argon2id per step-7 §3. better-auth's default is scrypt; we override.
     password: {
       hash: (password) => argon2Hash(password, { algorithm: 2 /* argon2id */ }),

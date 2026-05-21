@@ -17,10 +17,18 @@ export const packageSchema = z.object({
   updated_at: isoTimestampSchema,
 });
 
+export const packageLatestExportSummarySchema = z.object({
+  id: uuidSchema,
+  status: z.enum(['pending', 'rendering', 'ready', 'failed']),
+  byte_size: z.number().int().nonnegative().nullable(),
+  page_count: z.number().int().nonnegative().nullable(),
+  created_at: isoTimestampSchema,
+});
+
 export const packageDetailResponseSchema = packageSchema.extend({
   source_pdf_count: z.number().int().nonnegative(),
   item_count: z.number().int().nonnegative(),
-  latest_export: z.null(),
+  latest_export: packageLatestExportSummarySchema.nullable(),
 });
 
 export const packageListResponseSchema = listEnvelopeSchema(packageSchema);

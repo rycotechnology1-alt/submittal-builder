@@ -1,6 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm';
 
 import type {
+  Export,
   Package,
   Project,
   Workspace,
@@ -192,4 +193,37 @@ export async function findSourcePageInLivePackage(workspaceId: string, sourcePag
 
 export function notFound() {
   return jsonError(404, 'not_found', 'Not found');
+}
+
+export function packageExportedError() {
+  return jsonError(
+    409,
+    'package_exported',
+    'Package is exported and cannot be modified. Create a new revision to make edits.',
+  );
+}
+
+export function exportJson(row: Export) {
+  return {
+    id: row.id,
+    package_id: row.packageId,
+    status: row.status,
+    bates_prefix: row.batesPrefix,
+    byte_size: row.byteSize,
+    page_count: row.pageCount,
+    error: row.error,
+    created_at: iso(row.createdAt)!,
+    updated_at: iso(row.updatedAt)!,
+  };
+}
+
+export function latestExportSummaryJson(row: Export | null) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    status: row.status,
+    byte_size: row.byteSize,
+    page_count: row.pageCount,
+    created_at: iso(row.createdAt)!,
+  };
 }

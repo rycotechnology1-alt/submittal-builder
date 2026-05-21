@@ -15,7 +15,13 @@ export type PackageJobData = {
   packageId: string;
 };
 
-export type JobKind = 'ocr' | 'classify' | 'extract' | 'batch_order';
+export type JobKind = 'ocr' | 'classify' | 'extract' | 'batch_order' | 'render_export';
+
+export type RenderExportJobData = {
+  workspaceId: string;
+  packageId: string;
+  exportId: string;
+};
 
 export async function markJobRunning(db: Db, data: PackageJobData, kind: JobKind, sourcePdfId?: string) {
   await startProcessingJobAttempt(db, {

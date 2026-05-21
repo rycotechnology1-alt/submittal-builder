@@ -11,6 +11,7 @@ import {
   itemJson,
   itemSourcePdfJson,
   notFound,
+  packageExportedError,
 } from '@/server/phase2-records';
 
 const ATTRIBUTE_KEYS = ['manufacturer', 'model_number', 'description', 'spec_section_ref'] as const;
@@ -71,6 +72,7 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
   const result = await withWorkspaceFromHeaders(req.headers, async (ctx) => {
     const pkg = await findLivePackage(ctx.workspaceId, id);
     if (!pkg) return notFound();
+    if (pkg.status === 'exported') return packageExportedError();
 
     if (body.source_pdf_ids.length > 0) {
       const sourcePdfs = await db

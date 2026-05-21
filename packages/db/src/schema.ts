@@ -54,9 +54,17 @@ export const itemDocType = pgEnum('item_doc_type', [
   'other',
 ]);
 
-export const jobKind = pgEnum('job_kind', ['ocr', 'classify', 'extract', 'batch_order']);
+export const jobKind = pgEnum('job_kind', [
+  'ocr',
+  'classify',
+  'extract',
+  'batch_order',
+  'render_export',
+]);
 
 export const jobStatus = pgEnum('job_status', ['queued', 'running', 'succeeded', 'failed']);
+
+export const exportStatus = pgEnum('export_status', ['pending', 'rendering', 'ready', 'failed']);
 
 // ---------------------------------------------------------------------------
 // Workspaces (tenancy root) + users
@@ -323,20 +331,29 @@ export const itemAttributes = pgTable(
 // Exports + processing_jobs
 // ---------------------------------------------------------------------------
 
-export const exports = pgTable('exports', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  packageId: uuid('package_id')
-    .notNull()
-    .references(() => packages.id, { onDelete: 'cascade' }),
-  createdByUserId: uuid('created_by_user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'restrict' }),
-  storageKey: text('storage_key').notNull(),
-  byteSize: bigint('byte_size', { mode: 'number' }),
-  pageCount: integer('page_count'),
-  batesPrefix: text('bates_prefix'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const exports = pgTable(
+  'exports',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    packageId: uuid('package_id')
+      .notNull()
+      .references(() => packages.id, { onDelete: 'cascade' }),
+    createdByUserId: uuid('created_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    storageKey: text('storage_key').notNull(),
+    byteSize: bigint('byte_size', { mode: 'number' }),
+    pageCount: integer('page_count'),
+    batesPrefix: text('bates_prefix'),
+    status: exportStatus('status').notNull().default('pending'),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    packageCreatedIdx: index('exports_package_created_idx').on(t.packageId, t.createdAt),
+  }),
+);
 
 export const processingJobs = pgTable(
   'processing_jobs',

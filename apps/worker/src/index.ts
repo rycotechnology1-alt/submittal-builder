@@ -16,7 +16,8 @@ import { runBatchOrderJob } from './jobs/batch-order.js';
 import { runClassifyJob } from './jobs/classify.js';
 import { runExtractJob } from './jobs/extract.js';
 import { runOcrJob } from './jobs/ocr.js';
-import type { JobKind, SourcePdfJobData } from './jobs/common.js';
+import { runRenderExportJob } from './jobs/render-export.js';
+import type { JobKind, RenderExportJobData, SourcePdfJobData } from './jobs/common.js';
 
 initSentry();
 
@@ -44,7 +45,7 @@ const ai = env.anthropicApiKey
   : null;
 
 const ocr = createTextractOcrClient({ region: env.awsRegion });
-const queues = ['ocr', 'classify', 'extract', 'batch_order'] as const;
+const queues = ['ocr', 'classify', 'extract', 'batch_order', 'render_export'] as const;
 
 boss.on('error', (err) => {
   console.error({ level: 'error', component: 'pg-boss', err: String(err) });
@@ -150,6 +151,12 @@ async function registerWorkers() {
   await boss.work<{ workspaceId: string; packageId: string }>('batch_order', async (jobs) => {
     for (const job of jobs) {
       await runBatchOrderJob({ db }, job.data);
+    }
+  });
+
+  await boss.work<RenderExportJobData>('render_export', async (jobs) => {
+    for (const job of jobs) {
+      await runRenderExportJob({ db, storage: requireStorage() }, job.data);
     }
   });
 }

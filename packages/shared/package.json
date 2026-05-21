@@ -12,6 +12,8 @@
     "./pdf": "./src/pdf/index.ts",
     "./pdf/parse": "./src/pdf/parse.ts",
     "./pdf/render": "./src/pdf/render.ts",
+    "./pdf/assemble": "./src/pdf/assemble.ts",
+    "./pdf/repair": "./src/pdf/repair.ts",
     "./storage": "./src/storage/index.ts"
   },
   "scripts": {
@@ -24,6 +26,7 @@
     "@aws-sdk/client-s3": "^3.1050.0",
     "@aws-sdk/client-textract": "^3.1050.0",
     "@aws-sdk/s3-request-presigner": "^3.1050.0",
+    "pdf-lib": "^1.17.1",
     "pdf-to-img": "^6.1.0",
     "pdfjs-dist": "^5.6.205",
     "resend": "^4.0.1",

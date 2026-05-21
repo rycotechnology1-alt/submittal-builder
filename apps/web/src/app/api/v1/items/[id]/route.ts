@@ -5,7 +5,12 @@ import { updateItemRequestSchema } from '@submittal/shared/api';
 import { noContent, parseJson, type RouteContext, uuidParam } from '@/server/api';
 import { db, schema } from '@/server/db';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
-import { findLiveItem, itemJson, notFound } from '@/server/phase2-records';
+import {
+  findLiveItem,
+  itemJson,
+  notFound,
+  packageExportedError,
+} from '@/server/phase2-records';
 
 export async function PATCH(req: Request, context: RouteContext<{ id: string }>) {
   const id = await uuidParam(context, 'id');
@@ -17,11 +22,28 @@ export async function PATCH(req: Request, context: RouteContext<{ id: string }>)
     const item = await findLiveItem(ctx.workspaceId, id);
     if (!item) return notFound();
 
+    const [pkg] = await db
+      .select({ status: schema.packages.status })
+      .from(schema.packages)
+      .where(eq(schema.packages.id, item.packageId))
+      .limit(1);
+    if (pkg?.status === 'exported') return packageExportedError();
+
+    const docTypeChange =
+      body.doc_type !== undefined && body.doc_type !== item.docType
+        ? {
+            docType: body.doc_type,
+            ...(item.docTypeOriginalAiValue === null
+              ? { docTypeOriginalAiValue: item.docType }
+              : {}),
+          }
+        : {};
+
     const [updated] = await db
       .update(schema.items)
       .set({
         ...(body.title !== undefined ? { title: body.title } : {}),
-        ...(body.doc_type !== undefined ? { docType: body.doc_type } : {}),
+        ...docTypeChange,
         ...(body.sort_order !== undefined ? { sortOrder: body.sort_order } : {}),
         updatedAt: new Date(),
       })
@@ -42,6 +64,13 @@ export async function DELETE(req: Request, context: RouteContext<{ id: string }>
   const result = await withWorkspaceFromHeaders(req.headers, async (ctx) => {
     const item = await findLiveItem(ctx.workspaceId, id);
     if (!item) return notFound();
+
+    const [pkg] = await db
+      .select({ status: schema.packages.status })
+      .from(schema.packages)
+      .where(eq(schema.packages.id, item.packageId))
+      .limit(1);
+    if (pkg?.status === 'exported') return packageExportedError();
 
     await db.transaction(async (tx) => {
       await tx

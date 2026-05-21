@@ -93,7 +93,21 @@ export const reorderItemsRequestSchema = z
   })
   .strict();
 
+export const updateItemAttributeRequestSchema = z
+  .object({
+    value: z.string().trim().min(1).nullable(),
+  })
+  .strict();
+
+export const reassignSourcePdfRequestSchema = z
+  .object({
+    item_id: uuidSchema.nullable(),
+  })
+  .strict();
+
 export type PackageItemResponse = z.infer<typeof packageItemResponseSchema>;
 export type CreateItemRequest = z.infer<typeof createItemRequestSchema>;
 export type UpdateItemRequest = z.infer<typeof updateItemRequestSchema>;
 export type ReorderItemsRequest = z.infer<typeof reorderItemsRequestSchema>;
+export type UpdateItemAttributeRequest = z.infer<typeof updateItemAttributeRequestSchema>;
+export type ReassignSourcePdfRequest = z.infer<typeof reassignSourcePdfRequestSchema>;

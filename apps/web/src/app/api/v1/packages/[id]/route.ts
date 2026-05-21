@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
-import { and, count, eq, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { updatePackageRequestSchema } from '@submittal/shared/api';
 
 import { noContent, parseJson, type RouteContext, uuidParam } from '@/server/api';
 import { db, schema } from '@/server/db';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
-import { findLivePackage, notFound, packageJson } from '@/server/phase2-records';
+import {
+  findLivePackage,
+  latestExportSummaryJson,
+  notFound,
+  packageJson,
+} from '@/server/phase2-records';
 
 export async function GET(req: Request, context: RouteContext<{ id: string }>) {
   const id = await uuidParam(context, 'id');
@@ -15,7 +20,7 @@ export async function GET(req: Request, context: RouteContext<{ id: string }>) {
     const pkg = await findLivePackage(ctx.workspaceId, id);
     if (!pkg) return notFound();
 
-    const [[sourcePdfCount], [itemCount]] = await Promise.all([
+    const [[sourcePdfCount], [itemCount], [latestExport]] = await Promise.all([
       db
         .select({ value: count() })
         .from(schema.sourcePdfs)
@@ -35,13 +40,19 @@ export async function GET(req: Request, context: RouteContext<{ id: string }>) {
             isNull(schema.items.deletedAt),
           ),
         ),
+      db
+        .select()
+        .from(schema.exports)
+        .where(eq(schema.exports.packageId, pkg.id))
+        .orderBy(desc(schema.exports.createdAt))
+        .limit(1),
     ]);
 
     return {
       ...packageJson(pkg),
       source_pdf_count: sourcePdfCount?.value ?? 0,
       item_count: itemCount?.value ?? 0,
-      latest_export: null,
+      latest_export: latestExportSummaryJson(latestExport ?? null),
     };
   });
 

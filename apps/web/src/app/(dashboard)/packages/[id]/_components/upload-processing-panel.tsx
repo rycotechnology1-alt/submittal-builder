@@ -18,6 +18,7 @@ import type {
 import { UploadFileRow, type UploadFileRowData, type UploadRowStage } from './upload-file-row';
 import {
   getPackageStatusPollingInterval,
+  isCancelableProcessingStatus,
   isTerminalProcessingStatus,
 } from './processing-status';
 
@@ -48,6 +49,7 @@ export function UploadProcessingPanel({
   const [rows, setRows] = useState<LocalUploadRow[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [processingRequested, setProcessingRequested] = useState(packageStatus === 'processing');
+  const [cancelingSourcePdfId, setCancelingSourcePdfId] = useState<string | null>(null);
 
   const shouldPoll = useMemo(() => {
     if (packageStatus === 'processing' || processingRequested) return true;
@@ -94,6 +96,36 @@ export function UploadProcessingPanel({
     },
     onError: (error) => {
       toast.error(error instanceof ApiError ? error.message : 'Could not cancel processing');
+    },
+  });
+
+  const cancelSourcePdfMutation = useMutation({
+    mutationFn: (sourcePdfId: string) =>
+      api.post<SourcePdfResponse>(`/api/v1/source-pdfs/${sourcePdfId}/cancel-processing`, {}),
+    onMutate: (sourcePdfId) => {
+      setCancelingSourcePdfId(sourcePdfId);
+    },
+    onSuccess: (updated) => {
+      setRows((current) =>
+        current.map((row) =>
+          row.sourcePdfId === updated.id
+            ? {
+                ...row,
+                stage: 'cancelled',
+                processingStatus: updated.processing_status,
+                error: updated.processing_error,
+              }
+            : row,
+        ),
+      );
+      queryClient.invalidateQueries({ queryKey: ['package-status', packageId] });
+      toast.success('PDF processing cancelled');
+    },
+    onError: (error) => {
+      toast.error(error instanceof ApiError ? error.message : 'Could not cancel PDF processing');
+    },
+    onSettled: () => {
+      setCancelingSourcePdfId(null);
     },
   });
 
@@ -186,6 +218,8 @@ export function UploadProcessingPanel({
           stage: processingStatusToStage(status.processing_status),
           processingStatus: status.processing_status,
           error: status.processing_error ?? row.error,
+          canCancel: isCancelableProcessingStatus(status.processing_status),
+          cancelPending: cancelingSourcePdfId === status.id,
         };
       }),
     );
@@ -204,14 +238,17 @@ export function UploadProcessingPanel({
       .filter((pdf) => !knownIds.has(pdf.id))
       .map<UploadFileRowData>((pdf) => ({
         id: pdf.id,
+        sourcePdfId: pdf.id,
         fileName: `Source PDF ${pdf.id.slice(0, 8)}`,
         byteSize: null,
         stage: processingStatusToStage(pdf.processing_status),
         progress: pdf.processing_status === 'extracted' ? 100 : 0,
         processingStatus: pdf.processing_status,
         error: pdf.processing_error,
+        canCancel: isCancelableProcessingStatus(pdf.processing_status),
+        cancelPending: cancelingSourcePdfId === pdf.id,
       }));
-  }, [rows, statusQuery.data]);
+  }, [cancelingSourcePdfId, rows, statusQuery.data]);
 
   const allRows = [...serverRows, ...rows];
   const statusData = statusQuery.data;
@@ -316,7 +353,13 @@ export function UploadProcessingPanel({
         ) : (
           <ul className="overflow-hidden rounded-lg border bg-card">
             {allRows.map((row) => (
-              <UploadFileRow key={row.id} row={row} />
+              <UploadFileRow
+                key={row.id}
+                row={row}
+                onCancel={(nextRow) => {
+                  if (nextRow.sourcePdfId) cancelSourcePdfMutation.mutate(nextRow.sourcePdfId);
+                }}
+              />
             ))}
           </ul>
         )}
@@ -334,6 +377,7 @@ function uploadBatchRowToLocalRow(row: UploadBatchRow): LocalUploadRow {
     stage: row.status === 'queued' ? 'queued' : 'error',
     progress: 0,
     error: row.status === 'error' ? row.error : null,
+    canCancel: false,
   };
 }
 

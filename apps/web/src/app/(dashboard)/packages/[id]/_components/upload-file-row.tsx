@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import type { SourcePdfResponse } from '@submittal/shared/api';
 
@@ -24,6 +25,7 @@ export type UploadRowStage =
 
 export type UploadFileRowData = {
   id: string;
+  sourcePdfId?: string;
   fileName: string;
   byteSize: number | null;
   stage: UploadRowStage;
@@ -31,6 +33,8 @@ export type UploadFileRowData = {
   pageCount?: number | null;
   processingStatus?: SourcePdfResponse['processing_status'];
   error?: string | null;
+  canCancel?: boolean;
+  cancelPending?: boolean;
 };
 
 const stageLabels: Record<UploadRowStage, string> = {
@@ -45,7 +49,13 @@ const stageLabels: Record<UploadRowStage, string> = {
   cancelled: 'Cancelled',
 };
 
-export function UploadFileRow({ row }: { row: UploadFileRowData }) {
+export function UploadFileRow({
+  row,
+  onCancel,
+}: {
+  row: UploadFileRowData;
+  onCancel?: (row: UploadFileRowData) => void;
+}) {
   const isActive = ['presigning', 'uploading', 'confirming', 'uploaded', 'processing'].includes(
     row.stage,
   );
@@ -70,9 +80,25 @@ export function UploadFileRow({ row }: { row: UploadFileRowData }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="min-w-0 truncate text-sm font-medium">{row.fileName}</p>
-          <Badge variant={row.stage === 'error' ? 'destructive' : 'secondary'}>
-            {stageLabels[row.stage]}
-          </Badge>
+          <div className="flex shrink-0 items-center gap-2">
+            {row.canCancel ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                aria-label={`Cancel processing for ${row.fileName}`}
+                title="Cancel this PDF"
+                onClick={() => onCancel?.(row)}
+                disabled={row.cancelPending}
+              >
+                <XCircle className="h-4 w-4" />
+              </Button>
+            ) : null}
+            <Badge variant={row.stage === 'error' ? 'destructive' : 'secondary'}>
+              {stageLabels[row.stage]}
+            </Badge>
+          </div>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>{formatBytes(row.byteSize)}</span>

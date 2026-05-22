@@ -8,6 +8,7 @@ import { POST as projectsPOST } from '@/app/api/v1/projects/route';
 import { POST as projectPackagesPOST } from '@/app/api/v1/projects/[id]/packages/route';
 import { GET as packageStatusGET } from '@/app/api/v1/packages/[id]/status/route';
 import { POST as cancelProcessingPOST } from '@/app/api/v1/packages/[id]/cancel-processing/route';
+import { POST as cancelSourcePdfProcessingPOST } from '@/app/api/v1/source-pdfs/[id]/cancel-processing/route';
 import { auth } from '@/server/auth';
 import { db, schema } from '@/server/db';
 
@@ -501,5 +502,95 @@ describe('Phase 4 processing pipeline', () => {
       .where(eq(schema.processingJobs.sourcePdfId, active.pdf.id))
       .limit(1);
     expect(job).toEqual({ status: 'failed', error: 'Processing cancelled by user.' });
+  });
+
+  it('cancels a single active source PDF without cancelling its siblings', async () => {
+    const user = await createAuthedUser('cancel-source');
+    emails.push(user.email);
+    const pkg = await createPackage(user.cookie);
+    const target = await insertConfirmedSourcePdf({
+      workspaceId: user.workspaceId,
+      packageId: pkg.id,
+      filename: 'target.pdf',
+      hasOcr: true,
+    });
+    const sibling = await insertConfirmedSourcePdf({
+      workspaceId: user.workspaceId,
+      packageId: pkg.id,
+      filename: 'sibling.pdf',
+      hasOcr: true,
+    });
+
+    await db
+      .update(schema.sourcePdfs)
+      .set({ processingStatus: 'extracting' })
+      .where(eq(schema.sourcePdfs.id, target.pdf.id));
+    await db
+      .update(schema.sourcePdfs)
+      .set({ processingStatus: 'classifying' })
+      .where(eq(schema.sourcePdfs.id, sibling.pdf.id));
+    await db.insert(schema.processingJobs).values([
+      {
+        packageId: pkg.id,
+        sourcePdfId: target.pdf.id,
+        kind: 'extract',
+        status: 'running',
+        attempts: 1,
+        startedAt: new Date(),
+      },
+      {
+        packageId: pkg.id,
+        sourcePdfId: sibling.pdf.id,
+        kind: 'classify',
+        status: 'running',
+        attempts: 1,
+        startedAt: new Date(),
+      },
+    ]);
+
+    const cancel = await cancelSourcePdfProcessingPOST(
+      jsonReq(`/api/v1/source-pdfs/${target.pdf.id}/cancel-processing`, user.cookie),
+      ctx({ id: target.pdf.id }),
+    );
+    expect(cancel.status).toBe(202);
+    await expect(cancel.json()).resolves.toMatchObject({
+      id: target.pdf.id,
+      processing_status: 'cancelled',
+      processing_error: 'Processing cancelled by user.',
+    });
+
+    const pdfs = await db
+      .select({
+        id: schema.sourcePdfs.id,
+        status: schema.sourcePdfs.processingStatus,
+        error: schema.sourcePdfs.processingError,
+      })
+      .from(schema.sourcePdfs)
+      .where(eq(schema.sourcePdfs.packageId, pkg.id));
+    expect(pdfs).toEqual(
+      expect.arrayContaining([
+        { id: target.pdf.id, status: 'cancelled', error: 'Processing cancelled by user.' },
+        { id: sibling.pdf.id, status: 'classifying', error: null },
+      ]),
+    );
+
+    const jobs = await db
+      .select({
+        sourcePdfId: schema.processingJobs.sourcePdfId,
+        status: schema.processingJobs.status,
+        error: schema.processingJobs.error,
+      })
+      .from(schema.processingJobs)
+      .where(eq(schema.processingJobs.packageId, pkg.id));
+    expect(jobs).toEqual(
+      expect.arrayContaining([
+        {
+          sourcePdfId: target.pdf.id,
+          status: 'failed',
+          error: 'Processing cancelled by user.',
+        },
+        { sourcePdfId: sibling.pdf.id, status: 'running', error: null },
+      ]),
+    );
   });
 });

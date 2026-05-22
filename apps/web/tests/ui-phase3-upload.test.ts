@@ -8,6 +8,7 @@ import {
 } from '@/lib/upload';
 import {
   getPackageStatusPollingInterval,
+  isCancelableProcessingStatus,
   isTerminalProcessingStatus,
 } from '@/app/(dashboard)/packages/[id]/_components/processing-status';
 import type { PackageStatusResponse } from '@submittal/shared/api';
@@ -180,5 +181,14 @@ describe('package processing status helpers', () => {
     expect(isTerminalProcessingStatus('error')).toBe(true);
     expect(isTerminalProcessingStatus('cancelled')).toBe(true);
     expect(isTerminalProcessingStatus('extracting')).toBe(false);
+  });
+
+  test('allows row-level cancellation only for active processing statuses', () => {
+    expect(isCancelableProcessingStatus('ocr_running')).toBe(true);
+    expect(isCancelableProcessingStatus('classifying')).toBe(true);
+    expect(isCancelableProcessingStatus('extracting')).toBe(true);
+    expect(isCancelableProcessingStatus('extracted')).toBe(false);
+    expect(isCancelableProcessingStatus('error')).toBe(false);
+    expect(isCancelableProcessingStatus('cancelled')).toBe(false);
   });
 });

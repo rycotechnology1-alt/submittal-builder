@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, api } from '@/lib/api';
 import type { PackageDetailResponse, ProjectDetailResponse } from '@submittal/shared/api';
 
+import { ExportedPackageView } from './_components/exported-package-view';
 import { PackageHeader } from './_components/package-header';
 import { PackageEditor } from './_components/editor/package-editor';
 import { UploadProcessingPanel } from './_components/upload-processing-panel';
@@ -72,7 +73,7 @@ export default function PackageDetailPage() {
       ) : pkg.status === 'ready' ? (
         <PackageEditor pkg={pkg} project={project} />
       ) : (
-        <ExportedPlaceholder pkg={pkg} />
+        <ExportedPackageView pkg={pkg} project={project} />
       )}
     </>
   );
@@ -100,25 +101,6 @@ function PackageSkeleton() {
         </div>
       </div>
     </div>
-  );
-}
-
-function ExportedPlaceholder({ pkg }: { pkg: PackageDetailResponse }) {
-  return (
-    <main className="mx-auto max-w-6xl px-6 py-8">
-      <div className="rounded-lg border bg-card p-10 text-center">
-        <h2 className="text-lg font-semibold tracking-tight">Package exported</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The read-only editor lands in the next UI phase.
-        </p>
-        {pkg.latest_export ? (
-          <p className="mt-4 text-xs text-muted-foreground">
-            Last export: {pkg.latest_export.status} on{' '}
-            {new Date(pkg.latest_export.created_at).toLocaleDateString()}
-          </p>
-        ) : null}
-      </div>
-    </main>
   );
 }
 

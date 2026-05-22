@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, api } from '@/lib/api';
 import type { ProjectDetailResponse } from '@submittal/shared/api';
 
+import { EditableProjectMetadata } from './_components/editable-project-metadata';
 import { NewPackageDialog } from './_components/new-package-dialog';
 
 type PackageSummary = ProjectDetailResponse['packages'][number];
@@ -85,22 +86,13 @@ export default function ProjectDetailPage() {
   }
 
   const { project, packages } = data;
-  const subheaderParts = [
-    project.project_number && `Project #${project.project_number}`,
-    project.gc_name && `GC: ${project.gc_name}`,
-    project.architect_name && `Architect: ${project.architect_name}`,
-  ].filter(Boolean) as string[];
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
       <BackLink />
-      <div className="mb-8 mt-2">
+      <div className="mb-8 mt-2 space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
-        {subheaderParts.length > 0 && (
-          <p className="mt-1 text-sm text-muted-foreground">
-            {subheaderParts.join('   ·   ')}
-          </p>
-        )}
+        <EditableProjectMetadata project={project} />
       </div>
 
       <div className="mb-4 flex items-center justify-between gap-4">

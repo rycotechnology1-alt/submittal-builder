@@ -16,6 +16,7 @@ import type {
 import { CitationDrawer, type CitationTarget } from './citation-drawer';
 import { CoverSheetDrawer } from './cover-sheet-drawer';
 import { type DocType } from './doc-types';
+import { ExportDialog } from './export-dialog';
 import { applyReorder, countItemsNeedingReview } from './item-helpers';
 import { ItemList } from './item-list';
 
@@ -36,6 +37,7 @@ export function PackageEditor({
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [citationTarget, setCitationTarget] = useState<CitationTarget | null>(null);
   const [coverSheetOpen, setCoverSheetOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const itemsQuery = useQuery({
     queryKey: itemsKey(packageId),
@@ -360,7 +362,12 @@ export function PackageEditor({
             >
               Cover sheet
             </Button>
-            <Button size="sm" disabled title={futurePhase}>
+            <Button
+              size="sm"
+              onClick={() => setExportOpen(true)}
+              disabled={items.length === 0}
+              title={items.length === 0 ? 'Add at least one item before exporting' : undefined}
+            >
               Export package →
             </Button>
           </div>
@@ -393,6 +400,13 @@ export function PackageEditor({
         onOpenChange={setCoverSheetOpen}
         pkg={pkg}
         project={project}
+      />
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        pkg={pkg}
+        project={project}
+        items={items}
       />
     </>
   );

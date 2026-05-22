@@ -7,6 +7,8 @@ import { db, schema } from '@/server/db';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
 import { findLivePackage, notFound } from '@/server/phase2-records';
 
+const activeProcessingStatuses = ['uploaded', 'ocr_running', 'classifying', 'extracting'] as const;
+
 export async function GET(req: Request, context: RouteContext<{ id: string }>) {
   const id = await uuidParam(context, 'id');
   if (id instanceof Response) return id;
@@ -32,8 +34,36 @@ export async function GET(req: Request, context: RouteContext<{ id: string }>) {
       latestProcessingJobsForPackage(db, pkg.id),
     ]);
 
+    const terminalCounts = {
+      extracted: sourcePdfs.filter((pdf) => pdf.processingStatus === 'extracted').length,
+      error: sourcePdfs.filter((pdf) => pdf.processingStatus === 'error').length,
+      cancelled: sourcePdfs.filter((pdf) => pdf.processingStatus === 'cancelled').length,
+    };
+    const hasActiveProcessing = sourcePdfs.some((pdf) =>
+      activeProcessingStatuses.includes(pdf.processingStatus as (typeof activeProcessingStatuses)[number]),
+    );
+    const hasErrors = terminalCounts.error > 0;
+    const hasCancelled = terminalCounts.cancelled > 0;
+    const processingState =
+      pkg.status === 'ready'
+        ? 'ready'
+        : hasActiveProcessing
+          ? 'active'
+          : hasErrors
+            ? 'blocked'
+            : hasCancelled
+              ? 'cancelled'
+              : sourcePdfs.length === 0
+                ? 'idle'
+                : 'idle';
+
     return {
       status: pkg.status,
+      processing_state: processingState,
+      has_active_processing: hasActiveProcessing,
+      has_errors: hasErrors,
+      can_cancel: hasActiveProcessing,
+      terminal_counts: terminalCounts,
       source_pdfs: sourcePdfs.map((pdf) => ({
         id: pdf.id,
         processing_status: pdf.processingStatus,

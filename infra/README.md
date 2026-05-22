@@ -14,6 +14,18 @@ themselves run.
   per step-8-buildplan.md Phase 6.
 - `s3-cors.json` — S3 bucket CORS rules. Allows browser PUT to presigned URLs.
 
+## AWS IAM permissions
+
+The worker and web API use the AWS credentials to read/write source PDFs and
+let Textract read documents from S3. CORS only controls browser uploads; it does
+not grant the worker access to S3 objects. The IAM identity needs:
+
+- `s3:ListBucket` on `arn:aws:s3:::<bucket>`
+- `s3:GetObject`, `s3:PutObject`, and `s3:DeleteObject` on
+  `arn:aws:s3:::<bucket>/*`
+- `textract:StartDocumentTextDetection`, `textract:GetDocumentTextDetection`,
+  and `textract:DetectDocumentText`
+
 ## Deploying
 
 Worker:

@@ -15,7 +15,7 @@ POST /packages/:id/process
 
 The web app now owns queue creation/enqueueing for `POST /process`, and the worker owns downstream chained enqueueing. Repeated calls are idempotent at the app audit layer and use pg-boss singleton keys.
 
-A no-UI live smoke runner was added because Step 9 UI work has not started yet. It signs up a throwaway user, verifies the email in the dev DB, creates a project/package, uploads two fixture PDFs through presigned S3 URLs, confirms them, processes them through the live worker and Anthropic path, polls status, then asserts items, attributes, confidence, citations, and `original_ai_value`.
+A no-UI live smoke runner was added because UI work has not started yet. It signs up a throwaway user, verifies the email in the dev DB, creates a project/package, uploads two fixture PDFs through presigned S3 URLs, confirms them, processes them through the live worker and Anthropic path, polls status, then asserts items, attributes, confidence, citations, and `original_ai_value`.
 
 ## Where it lives
 

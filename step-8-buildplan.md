@@ -178,7 +178,7 @@ Source design docs (read by every phase):
 
 ## Phase 6 — Observability, end-to-end smoke, frontend handoff
 
-**Goal.** The backend is shippable. Frontend (Step 9) can start without backend churn. Operational hooks are in place to catch failures in pilot.
+**Goal.** The backend is shippable. Frontend  can start without backend churn. Operational hooks are in place to catch failures in pilot.
 
 **Deliverables.**
 - Sentry source maps uploaded on every deploy (Vercel + Fly). Test by deliberately throwing and confirming the deminified trace lands in Sentry.
@@ -187,9 +187,9 @@ Source design docs (read by every phase):
 - Uptime GitHub Action: hits `https://<web>/api/v1/healthz` and `https://<worker>/healthz` every 5 min, fails the workflow on non-200.
 - Admin SQL snippets committed under `docs/ops/queries.sql`: failed jobs in last 24h, slowest exports, stuck `processing` packages, dead-letter contents. No admin UI at MVP (per scope).
 - Full end-to-end backend smoke script under `apps/web/tests/e2e-backend.sh`: signup → project → package → upload 2 PDFs → process → poll → edit one attribute → export → poll → download → assert SHA-256s. Runs in CI on a Neon preview branch.
-- A short "what the backend exposes" doc at `step-8-final-handoff.md` for the Step 9 frontend agent: every endpoint with its Zod schema location in `packages/shared`, the polling cadence assumptions, the read-only-after-export contract, where to find AI fixtures for component tests, env vars the frontend needs.
+- A short "what the backend exposes" doc at `step-8-final-handoff.md` for the frontend agent: every endpoint with its Zod schema location in `packages/shared`, the polling cadence assumptions, the read-only-after-export contract, where to find AI fixtures for component tests, env vars the frontend needs.
 
-**Verification.** The smoke script passes locally + CI. Sentry receives a deliberately-thrown error in deminified form. Uptime workflow runs green. A senior dev can read `step-8-final-handoff.md` and have enough context to start Step 9 without re-reading every phase doc.
+**Verification.** The smoke script passes locally + CI. Sentry receives a deliberately-thrown error in deminified form. Uptime workflow runs green. A senior dev can read `step-8-final-handoff.md` and have enough context to start without re-reading every phase doc.
 
 **Critical files.**
 - `.github/workflows/uptime.yml`
@@ -197,7 +197,7 @@ Source design docs (read by every phase):
 - `apps/web/tests/e2e-backend.sh`
 - `step-8-final-handoff.md`
 
-**Handoff doc.** This phase's handoff IS `step-8-final-handoff.md` — the backend-complete summary for whoever picks up Step 9. References every prior phase handoff for detail.
+**Handoff doc.** This phase's handoff IS `step-8-final-handoff.md` — the backend-complete summary for whoever picks up. References every prior phase handoff for detail.
 
 ## Phase boundary rules (apply to every phase)
 

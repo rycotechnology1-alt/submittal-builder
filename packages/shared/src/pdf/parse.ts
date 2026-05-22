@@ -1,5 +1,7 @@
 import type * as Pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 
+import { getStandardFontDataUrl } from './pdfjs-options.js';
+
 const OCR_TEXT_THRESHOLD = 50;
 
 export type ParsedPdfPage = {
@@ -24,11 +26,13 @@ async function loadPdfjs() {
 }
 
 export async function parsePdfPages(bytes: Uint8Array): Promise<ParsedPdf> {
-  const { getDocument } = await loadPdfjs();
+  const { getDocument, VerbosityLevel } = await loadPdfjs();
   const document = await getDocument({
     data: bytes.slice(),
     disableFontFace: true,
     isEvalSupported: false,
+    standardFontDataUrl: getStandardFontDataUrl(),
+    verbosity: VerbosityLevel.ERRORS,
   }).promise;
 
   const pages: ParsedPdfPage[] = [];

@@ -59,18 +59,26 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
     if (!pkg) return notFound();
 
     const sourcePdfs = await db
-      .select({
-        id: schema.sourcePdfs.id,
-        processingStatus: schema.sourcePdfs.processingStatus,
-      })
+        .select({
+          id: schema.sourcePdfs.id,
+          itemId: schema.sourcePdfs.itemId,
+          processingStatus: schema.sourcePdfs.processingStatus,
+        })
       .from(schema.sourcePdfs)
       .where(
-        and(
-          eq(schema.sourcePdfs.workspaceId, ctx.workspaceId),
-          eq(schema.sourcePdfs.packageId, pkg.id),
-          inArray(schema.sourcePdfs.processingStatus, ['uploaded', 'ocr_running', 'classifying']),
-        ),
-      );
+          and(
+            eq(schema.sourcePdfs.workspaceId, ctx.workspaceId),
+            eq(schema.sourcePdfs.packageId, pkg.id),
+            inArray(schema.sourcePdfs.processingStatus, [
+              'uploaded',
+              'ocr_running',
+              'classifying',
+              'extracting',
+              'error',
+              'cancelled',
+            ]),
+          ),
+        );
 
     const enqueued: Record<JobKind, number> = {
       ocr: 0,
@@ -106,6 +114,24 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
           await db
             .update(schema.sourcePdfs)
             .set({ processingStatus: 'ocr_running', processingError: null, updatedAt: new Date() })
+            .where(eq(schema.sourcePdfs.id, pdf.id));
+        }
+        continue;
+      }
+
+      if (pdf.itemId) {
+        const didEnqueue = await enqueueProcessingJob({
+          packageId: pkg.id,
+          workspaceId: ctx.workspaceId,
+          kind: 'extract',
+          sourcePdfId: pdf.id,
+          requestId,
+        });
+        if (didEnqueue) {
+          enqueued.extract++;
+          await db
+            .update(schema.sourcePdfs)
+            .set({ processingStatus: 'extracting', processingError: null, updatedAt: new Date() })
             .where(eq(schema.sourcePdfs.id, pdf.id));
         }
         continue;

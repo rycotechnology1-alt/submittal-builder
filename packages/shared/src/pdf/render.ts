@@ -1,3 +1,5 @@
+import { getStandardFontDataUrl } from './pdfjs-options.js';
+
 export type RenderPdfPageInput = {
   bytes: Uint8Array;
   pageNumber: number;
@@ -6,8 +8,17 @@ export type RenderPdfPageInput = {
 
 export async function renderPdfPageToWebp(input: RenderPdfPageInput): Promise<Uint8Array> {
   const { pdf } = await import('pdf-to-img');
+  const { VerbosityLevel } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const { default: sharp } = await import('sharp');
-  const document = await pdf(Buffer.from(input.bytes), { scale: 2 });
+  const document = await pdf(Buffer.from(input.bytes), {
+    scale: 2,
+    docInitParams: {
+      disableFontFace: true,
+      isEvalSupported: false,
+      standardFontDataUrl: getStandardFontDataUrl(),
+      verbosity: VerbosityLevel.ERRORS,
+    },
+  });
   const maxEdge = input.maxEdge ?? 1568;
 
   let currentPage = 0;

@@ -16,6 +16,12 @@ const nextConfig = {
   // though source files are `.ts`). webpack doesn't resolve that mapping by
   // default — this alias tells it `import './foo.js'` also matches `./foo.ts`.
   webpack(config) {
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings ?? []),
+      { message: /Can't resolve '@img\/sharp-libvips-dev\/include'/ },
+      { message: /Can't resolve '@img\/sharp-libvips-dev\/cplusplus'/ },
+      { message: /Can't resolve '@img\/sharp-wasm32\/versions'/ },
+    ];
     config.resolve.extensionAlias = {
       ...(config.resolve.extensionAlias ?? {}),
       '.js': ['.ts', '.tsx', '.js'],

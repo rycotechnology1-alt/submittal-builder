@@ -167,6 +167,13 @@ describe('Phase 4 worker jobs', () => {
       data,
     );
 
+    const [classifiedPdf] = await db
+      .select({ processingStatus: schema.sourcePdfs.processingStatus })
+      .from(schema.sourcePdfs)
+      .where(eq(schema.sourcePdfs.id, pdf.id))
+      .limit(1);
+    expect(classifiedPdf?.processingStatus).toBe('extracting');
+
     const [item] = await db
       .select()
       .from(schema.items)
@@ -325,6 +332,53 @@ describe('Phase 4 worker jobs', () => {
       { workspaceId: workspace.id, packageId: pkg.id, sourcePdfId: second.pdf.id },
     );
     expect(enqueued).toEqual(['batch_order']);
+  });
+
+  it('does not process a source PDF that was cancelled before the worker picked up the job', async () => {
+    const { workspace, pkg } = await insertPackage();
+    workspaceIds.push(workspace.id);
+    const { pdf } = await insertSourcePdf({
+      workspaceId: workspace.id,
+      packageId: pkg.id,
+      filename: 'cancelled.pdf',
+    });
+    await insertQueuedJob({ packageId: pkg.id, sourcePdfId: pdf.id, kind: 'classify' });
+    await db
+      .update(schema.sourcePdfs)
+      .set({ processingStatus: 'cancelled', processingError: 'Processing cancelled by user.' })
+      .where(eq(schema.sourcePdfs.id, pdf.id));
+
+    const storage = new FakeStorage();
+    const data = { workspaceId: workspace.id, packageId: pkg.id, sourcePdfId: pdf.id };
+
+    await runClassifyJob(
+      {
+        db,
+        storage,
+        renderPageImages: async () => {
+          throw new Error('cancelled job should not render');
+        },
+        ai: {
+          classifyDocument: async () => {
+            throw new Error('cancelled job should not call AI');
+          },
+        },
+      },
+      data,
+    );
+
+    const [sourcePdf] = await db
+      .select({
+        processingStatus: schema.sourcePdfs.processingStatus,
+        processingError: schema.sourcePdfs.processingError,
+      })
+      .from(schema.sourcePdfs)
+      .where(eq(schema.sourcePdfs.id, pdf.id))
+      .limit(1);
+    expect(sourcePdf).toEqual({
+      processingStatus: 'cancelled',
+      processingError: 'Processing cancelled by user.',
+    });
   });
 
   it('records a separate processing job row for each retry attempt', async () => {

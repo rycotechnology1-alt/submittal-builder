@@ -1,7 +1,7 @@
 # Step 8 Final Handoff
 
 Step 8 is complete. The backend is shippable. This doc is the orientation
-read for the Step 9 frontend agent — every endpoint, every Zod schema, every
+read for the frontend agent — every endpoint, every Zod schema, every
 polling cadence and audit invariant the UI relies on.
 
 For phase-by-phase build history see:
@@ -136,7 +136,7 @@ pnpm smoke:e2e                        # confirms the backend is healthy end-to-e
 Then build screens in `apps/web/src/app/(dashboard)/…` against the schemas
 in `packages/shared/src/api/`.
 
-Step 9's planning doc enumerates the screens.
+planning doc enumerates the screens.
 
 ## Operational dashboard
 

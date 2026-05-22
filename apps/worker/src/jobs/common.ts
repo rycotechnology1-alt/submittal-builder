@@ -1,6 +1,9 @@
-import type { Db } from '@submittal/db';
+import { and, eq } from 'drizzle-orm';
+
+import type { Db, SourcePdf } from '@submittal/db';
 import {
   finishProcessingJobAttempt,
+  schema,
   startProcessingJobAttempt,
 } from '@submittal/db';
 
@@ -28,6 +31,8 @@ export type RenderExportJobData = {
   /** Correlation id propagated from the originating web request. */
   requestId?: string;
 };
+
+export const CANCELLED_PROCESSING_MESSAGE = 'Processing cancelled by user.';
 
 export async function markJobRunning(db: Db, data: PackageJobData, kind: JobKind, sourcePdfId?: string) {
   await startProcessingJobAttempt(db, {
@@ -71,6 +76,32 @@ export async function markJobFailed(
     'failed',
     error,
   );
+}
+
+export async function loadRunnableSourcePdf(
+  db: Db,
+  data: SourcePdfJobData,
+  kind: Extract<JobKind, 'ocr' | 'classify' | 'extract'>,
+): Promise<SourcePdf | null> {
+  const [sourcePdf] = await db
+    .select()
+    .from(schema.sourcePdfs)
+    .where(
+      and(
+        eq(schema.sourcePdfs.id, data.sourcePdfId),
+        eq(schema.sourcePdfs.workspaceId, data.workspaceId),
+        eq(schema.sourcePdfs.packageId, data.packageId),
+      ),
+    )
+    .limit(1);
+  if (!sourcePdf) throw new Error(`source_pdf not found: ${data.sourcePdfId}`);
+
+  if (sourcePdf.processingStatus === 'cancelled') {
+    await markJobFailed(db, data, kind, new Error(CANCELLED_PROCESSING_MESSAGE), data.sourcePdfId);
+    return null;
+  }
+
+  return sourcePdf;
 }
 
 export function normalizeDocType(docType: string) {

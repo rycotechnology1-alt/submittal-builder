@@ -1,6 +1,6 @@
 # Step 8 Phase 6 Handoff
 
-Phase 6 closes out the backend. After this phase the Step 9 frontend agent
+Phase 6 closes out the backend. After this phase the frontend agent
 can start without backend churn, the on-call has SQL + healthchecks to debug
 pilot issues, and CI exercises the full backend slice end-to-end.
 
@@ -200,8 +200,7 @@ derived from the worker render.
 
 ## Frontend handoff
 
-This section is the **step-8-final-handoff** the buildplan asks for. Step 9
-agent: this is what the backend exposes; everything else is implementation
+This section is the **step-8-final-handoff** the buildplan asks for. this is what the backend exposes; everything else is implementation
 detail in the previous phase handoffs.
 
 ### What the backend exposes
@@ -310,11 +309,11 @@ pnpm smoke:e2e           # confirms the backend is healthy end-to-end
 ```
 
 Then build screens in `apps/web/src/app/(dashboard)/…` against the schemas in
-`packages/shared/src/api/`. Step 9's planning doc enumerates the screens.
+`packages/shared/src/api/`. planning doc enumerates the screens.
 
 ## Next phase starting point
 
-Step 9 (frontend). See [Frontend handoff](#frontend-handoff) above. Phase 6
+(frontend). See [Frontend handoff](#frontend-handoff) above. Phase 6
 is the last backend phase — there is no Phase 7. If pilot uncovers backend
 bugs they get fixed as patches against the existing phase artifacts, not as
 a new phase.

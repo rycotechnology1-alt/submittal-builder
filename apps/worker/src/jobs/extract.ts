@@ -9,6 +9,7 @@ import {
   markJobFailed,
   markJobRunning,
   markJobSucceeded,
+  loadRunnableSourcePdf,
   type SourcePdfJobData,
 } from './common.js';
 
@@ -90,19 +91,14 @@ export async function runExtractJob(deps: ExtractDeps, data: SourcePdfJobData) {
   await markJobRunning(deps.db, data, 'extract', data.sourcePdfId);
 
   try {
-    const [sourcePdf] = await deps.db
-      .select()
-      .from(schema.sourcePdfs)
-      .where(
-        and(
-          eq(schema.sourcePdfs.id, data.sourcePdfId),
-          eq(schema.sourcePdfs.workspaceId, data.workspaceId),
-          eq(schema.sourcePdfs.packageId, data.packageId),
-        ),
-      )
-      .limit(1);
-    if (!sourcePdf) throw new Error(`source_pdf not found: ${data.sourcePdfId}`);
+    const sourcePdf = await loadRunnableSourcePdf(deps.db, data, 'extract');
+    if (!sourcePdf) return null;
     if (!sourcePdf.itemId) throw new Error(`source_pdf has not been classified: ${sourcePdf.id}`);
+
+    await deps.db
+      .update(schema.sourcePdfs)
+      .set({ processingStatus: 'extracting', processingError: null, updatedAt: new Date() })
+      .where(eq(schema.sourcePdfs.id, sourcePdf.id));
 
     const sourcePages = await deps.db
       .select()

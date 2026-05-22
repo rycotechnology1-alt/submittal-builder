@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { renderPdfPageToWebp } from '@submittal/shared/pdf';
+import { renderPdfPageToWebp } from '@submittal/shared/pdf/render';
 
 import { type RouteContext, uuidParam } from '@/server/api';
 import { DOWNLOAD_URL_TTL_SECONDS, pagePreviewStorageKey } from '@/server/file-records';

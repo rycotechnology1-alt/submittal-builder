@@ -80,6 +80,7 @@ Committed literal JSON: `infra/s3-cors.json`
 It allows direct browser `PUT` from:
 
 - `http://localhost:3000`
+- `http://localhost:3100`
 - `https://app.example.com`
 
 Required upload headers are:

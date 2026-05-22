@@ -3,8 +3,7 @@
 You are picking up after the first UI slice landed. Backend is unchanged
 since [step-8-final-handoff.md](step-8-final-handoff.md) (which remains the
 source of truth for endpoint shapes, polling cadence, and the
-read-only-after-export contract). Ignore any "Step 9" references in those
-docs — there is no Step 9. UI work is being tracked as numbered UI phases
+read-only-after-export contract). UI work is being tracked as numbered UI phases
 instead.
 
 ## What I built

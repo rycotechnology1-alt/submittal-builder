@@ -459,6 +459,7 @@ describe('Phase 3 file handling', () => {
     }>;
 
     expect(cors[0]?.AllowedOrigins).toContain('http://localhost:3000');
+    expect(cors[0]?.AllowedOrigins).toContain('http://localhost:3100');
     expect(cors[0]?.AllowedMethods).toContain('PUT');
     expect(cors[0]?.AllowedHeaders).toContain('content-type');
     expect(cors[0]?.AllowedHeaders).toContain('x-amz-server-side-encryption');

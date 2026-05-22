@@ -2,7 +2,7 @@
   {
     "AllowedHeaders": ["content-type", "x-amz-server-side-encryption"],
     "AllowedMethods": ["PUT", "GET", "HEAD"],
-    "AllowedOrigins": ["http://localhost:3000", "https://app.example.com"],
+    "AllowedOrigins": ["http://localhost:3000", "http://localhost:3100", "https://app.example.com"],
     "ExposeHeaders": ["etag", "x-amz-request-id"],
     "MaxAgeSeconds": 3000
   }

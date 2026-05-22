@@ -3,7 +3,7 @@
 You are picking up after Phase 2 landed. Backend is unchanged since
 [step-8-final-handoff.md](step-8-final-handoff.md); Phase 1 context is in
 [ui-phase-1-handoff.md](ui-phase-1-handoff.md). UI work is tracked as
-numbered UI phases — ignore any "Step 9" references in older docs.
+numbered UI phases.
 
 ## What I built
 

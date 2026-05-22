@@ -220,7 +220,7 @@ No new variables — Phase 1 consumes the matrix that Phase 0 committed to [.env
 
 8. **`packages/db/drizzle.config.ts` uses `process.cwd()` to find the repo root.** Works because drizzle-kit cwds into `packages/db`. If a future script invokes drizzle-kit from a different directory, the env load will silently miss `.env.local`.
 
-9. **better-auth's verification link drops the user at `/api/v1/auth/verify-email?token=…`** — a server endpoint that responds with `Email verified ✓` or similar. There is no UI redirect yet (Step 9 frontend will add a destination page). For now the user sees a JSON response after clicking; functional, not polished.
+9. **better-auth's verification link drops the user at `/api/v1/auth/verify-email?token=…`** — a server endpoint that responds with `Email verified ✓` or similar. There is no UI redirect yet (frontend will add a destination page). For now the user sees a JSON response after clicking; functional, not polished.
 
 10. **No password-reset endpoint exposed via custom route.** better-auth ships `/api/v1/auth/forget-password` and `/api/v1/auth/reset-password` via the catch-all. The Resend hook is wired in `auth.ts`. Frontend just needs to call those paths.
 
@@ -249,7 +249,7 @@ Per [step-8-buildplan.md:55](step-8-buildplan.md):
 
 ### Critical files Phase 2 will touch
 
-- New: `packages/shared/src/api/{projects,packages,items,workspace,me}.ts` — Zod schemas mirroring step-5 §1–7. Source of truth for handlers AND react-hook-form (Step 9).
+- New: `packages/shared/src/api/{projects,packages,items,workspace,me}.ts` — Zod schemas mirroring step-5 §1–7. Source of truth for handlers AND react-hook-form.
 - New: `apps/web/src/app/api/v1/projects/route.ts`, `apps/web/src/app/api/v1/projects/[id]/route.ts`, `apps/web/src/app/api/v1/projects/[id]/packages/route.ts`, `apps/web/src/app/api/v1/packages/[id]/route.ts`, etc. — see step-5 §1–4 + §7 for the full surface.
 - New: `apps/web/src/app/api/v1/workspace/route.ts` — GET + PATCH (no logo upload; that's Phase 3).
 - New: `apps/web/tests/bruno/` — Bruno collection committed for manual + scripted flow reproduction.

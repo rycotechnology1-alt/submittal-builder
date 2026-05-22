@@ -40,8 +40,10 @@ export const pdfProcessingStatus = pgEnum('pdf_processing_status', [
   'uploaded',
   'ocr_running',
   'classifying',
+  'extracting',
   'extracted',
   'error',
+  'cancelled',
 ]);
 
 export const itemDocType = pgEnum('item_doc_type', [

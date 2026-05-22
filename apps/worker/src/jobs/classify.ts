@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import type { Db, SourcePdf } from '@submittal/db';
 import { schema } from '@submittal/db';
@@ -9,6 +9,7 @@ import {
   markJobFailed,
   markJobRunning,
   markJobSucceeded,
+  loadRunnableSourcePdf,
   normalizeDocType,
   type SourcePdfJobData,
 } from './common.js';
@@ -46,18 +47,8 @@ export async function runClassifyJob(deps: ClassifyDeps, data: SourcePdfJobData)
   await markJobRunning(deps.db, data, 'classify', data.sourcePdfId);
 
   try {
-    const [sourcePdf] = await deps.db
-      .select()
-      .from(schema.sourcePdfs)
-      .where(
-        and(
-          eq(schema.sourcePdfs.id, data.sourcePdfId),
-          eq(schema.sourcePdfs.workspaceId, data.workspaceId),
-          eq(schema.sourcePdfs.packageId, data.packageId),
-        ),
-      )
-      .limit(1);
-    if (!sourcePdf) throw new Error(`source_pdf not found: ${data.sourcePdfId}`);
+    const sourcePdf = await loadRunnableSourcePdf(deps.db, data, 'classify');
+    if (!sourcePdf) return null;
 
     const bytes = await deps.storage.getObjectBytes(sourcePdf.storageKey);
     const images = await (deps.renderPageImages ?? defaultRenderPageImages)({
@@ -102,7 +93,12 @@ export async function runClassifyJob(deps: ClassifyDeps, data: SourcePdfJobData)
 
     await deps.db
       .update(schema.sourcePdfs)
-      .set({ itemId: item.id, updatedAt: new Date() })
+      .set({
+        itemId: item.id,
+        processingStatus: 'extracting',
+        processingError: null,
+        updatedAt: new Date(),
+      })
       .where(eq(schema.sourcePdfs.id, sourcePdf.id));
 
     await markJobSucceeded(deps.db, data, 'classify', data.sourcePdfId);

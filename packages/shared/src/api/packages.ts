@@ -51,10 +51,27 @@ export const updatePackageRequestSchema = createPackageRequestSchema
 
 export const packageStatusResponseSchema = z.object({
   status: packageStatusSchema,
+  processing_state: z.enum(['idle', 'active', 'ready', 'blocked', 'cancelled']),
+  has_active_processing: z.boolean(),
+  has_errors: z.boolean(),
+  can_cancel: z.boolean(),
+  terminal_counts: z.object({
+    extracted: z.number().int().nonnegative(),
+    error: z.number().int().nonnegative(),
+    cancelled: z.number().int().nonnegative(),
+  }),
   source_pdfs: z.array(
     z.object({
       id: uuidSchema,
-      processing_status: z.enum(['uploaded', 'ocr_running', 'classifying', 'extracted', 'error']),
+      processing_status: z.enum([
+        'uploaded',
+        'ocr_running',
+        'classifying',
+        'extracting',
+        'extracted',
+        'error',
+        'cancelled',
+      ]),
       processing_error: z.string().nullable().optional(),
     }),
   ),
@@ -65,8 +82,16 @@ export const packageStatusResponseSchema = z.object({
   }),
 });
 
+export const cancelPackageProcessingResponseSchema = z.object({
+  processing_state: z.enum(['cancelled']),
+  cancelled_source_pdf_count: z.number().int().nonnegative(),
+});
+
 export type PackageResponse = z.infer<typeof packageSchema>;
 export type PackageDetailResponse = z.infer<typeof packageDetailResponseSchema>;
 export type CreatePackageRequest = z.infer<typeof createPackageRequestSchema>;
 export type UpdatePackageRequest = z.infer<typeof updatePackageRequestSchema>;
 export type PackageStatusResponse = z.infer<typeof packageStatusResponseSchema>;
+export type CancelPackageProcessingResponse = z.infer<
+  typeof cancelPackageProcessingResponseSchema
+>;

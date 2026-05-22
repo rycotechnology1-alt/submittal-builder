@@ -56,6 +56,8 @@ export const sourcePdfResponseSchema = z.object({
 export const sourcePagePreviewResponseSchema = z.object({
   image_url: z.string().url(),
   ocr_text: z.string().nullable(),
+  page_number: z.number().int().positive(),
+  source_pdf_id: uuidSchema,
 });
 
 export const downloadResponseSchema = z.object({

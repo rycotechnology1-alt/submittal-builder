@@ -33,6 +33,8 @@ export async function GET(req: Request, context: RouteContext<{ id: string }>) {
         expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
       }),
       ocr_text: row.page.ocrText,
+      page_number: row.page.pageNumber,
+      source_pdf_id: row.sourcePdf.id,
     };
   });
 

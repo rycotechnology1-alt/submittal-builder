@@ -11,6 +11,7 @@ import { ApiError, api } from '@/lib/api';
 import type { PackageDetailResponse, ProjectDetailResponse } from '@submittal/shared/api';
 
 import { PackageHeader } from './_components/package-header';
+import { PackageEditor } from './_components/editor/package-editor';
 import { UploadProcessingPanel } from './_components/upload-processing-panel';
 
 export default function PackageDetailPage() {
@@ -69,7 +70,7 @@ export default function PackageDetailPage() {
           sourcePdfCount={pkg.source_pdf_count}
         />
       ) : pkg.status === 'ready' ? (
-        <ReadyPlaceholder pkg={pkg} />
+        <PackageEditor pkg={pkg} />
       ) : (
         <ExportedPlaceholder pkg={pkg} />
       )}
@@ -99,19 +100,6 @@ function PackageSkeleton() {
         </div>
       </div>
     </div>
-  );
-}
-
-function ReadyPlaceholder({ pkg }: { pkg: PackageDetailResponse }) {
-  return (
-    <main className="mx-auto max-w-6xl px-6 py-8">
-      <div className="rounded-lg border border-dashed bg-card p-10 text-center">
-        <h2 className="text-lg font-semibold tracking-tight">Package editor coming next</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {pkg.item_count} items and {pkg.source_pdf_count} source PDFs are ready for review.
-        </p>
-      </div>
-    </main>
   );
 }
 

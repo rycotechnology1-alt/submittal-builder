@@ -70,7 +70,7 @@ export default function PackageDetailPage() {
           sourcePdfCount={pkg.source_pdf_count}
         />
       ) : pkg.status === 'ready' ? (
-        <PackageEditor pkg={pkg} />
+        <PackageEditor pkg={pkg} project={project} />
       ) : (
         <ExportedPlaceholder pkg={pkg} />
       )}

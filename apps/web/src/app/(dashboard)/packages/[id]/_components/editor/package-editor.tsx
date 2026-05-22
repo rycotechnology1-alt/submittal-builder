@@ -7,9 +7,14 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, api } from '@/lib/api';
-import type { PackageDetailResponse, PackageItemResponse } from '@submittal/shared/api';
+import type {
+  PackageDetailResponse,
+  PackageItemResponse,
+  ProjectResponse,
+} from '@submittal/shared/api';
 
 import { CitationDrawer, type CitationTarget } from './citation-drawer';
+import { CoverSheetDrawer } from './cover-sheet-drawer';
 import { type DocType } from './doc-types';
 import { applyReorder, countItemsNeedingReview } from './item-helpers';
 import { ItemList } from './item-list';
@@ -19,11 +24,18 @@ type ItemsQueryData = PackageItemResponse[];
 
 const itemsKey = (packageId: string) => ['package-items', packageId] as const;
 
-export function PackageEditor({ pkg }: { pkg: PackageDetailResponse }) {
+export function PackageEditor({
+  pkg,
+  project,
+}: {
+  pkg: PackageDetailResponse;
+  project: ProjectResponse | null;
+}) {
   const packageId = pkg.id;
   const queryClient = useQueryClient();
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [citationTarget, setCitationTarget] = useState<CitationTarget | null>(null);
+  const [coverSheetOpen, setCoverSheetOpen] = useState(false);
 
   const itemsQuery = useQuery({
     queryKey: itemsKey(packageId),
@@ -341,7 +353,11 @@ export function PackageEditor({ pkg }: { pkg: PackageDetailResponse }) {
             <Button variant="outline" size="sm" disabled title={futurePhase}>
               + Add item
             </Button>
-            <Button variant="outline" size="sm" disabled title={futurePhase}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCoverSheetOpen(true)}
+            >
               Cover sheet
             </Button>
             <Button size="sm" disabled title={futurePhase}>
@@ -372,6 +388,12 @@ export function PackageEditor({ pkg }: { pkg: PackageDetailResponse }) {
       </main>
 
       <CitationDrawer target={citationTarget} onClose={() => setCitationTarget(null)} />
+      <CoverSheetDrawer
+        open={coverSheetOpen}
+        onOpenChange={setCoverSheetOpen}
+        pkg={pkg}
+        project={project}
+      />
     </>
   );
 }

@@ -5,7 +5,7 @@ import { reorderItemsRequestSchema } from '@submittal/shared/api';
 import { jsonError, parseJson, type RouteContext, uuidParam } from '@/server/api';
 import { db, schema } from '@/server/db';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
-import { findLivePackage, notFound, packageExportedError } from '@/server/phase2-records';
+import { findLivePackage, notFound } from '@/server/phase2-records';
 
 export async function POST(req: Request, context: RouteContext<{ id: string }>) {
   const id = await uuidParam(context, 'id');
@@ -16,7 +16,6 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
   const result = await withWorkspaceFromHeaders(req.headers, async (ctx) => {
     const pkg = await findLivePackage(ctx.workspaceId, id);
     if (!pkg) return notFound();
-    if (pkg.status === 'exported') return packageExportedError();
 
     const itemIds = body.order.map((row) => row.item_id);
     if (new Set(itemIds).size !== itemIds.length) {

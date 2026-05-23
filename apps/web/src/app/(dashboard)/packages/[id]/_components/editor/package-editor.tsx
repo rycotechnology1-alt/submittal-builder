@@ -13,10 +13,12 @@ import type {
   ProjectResponse,
 } from '@submittal/shared/api';
 
+import { AddItemButton } from './add-item-button';
 import { CitationDrawer, type CitationTarget } from './citation-drawer';
 import { CoverSheetDrawer } from './cover-sheet-drawer';
 import { type DocType } from './doc-types';
 import { ExportDialog } from './export-dialog';
+import { ExportStatusBanner } from './export-status-banner';
 import { applyReorder, countItemsNeedingReview } from './item-helpers';
 import { ItemList } from './item-list';
 
@@ -335,11 +337,10 @@ export function PackageEditor({
     );
   }
 
-  const futurePhase = 'Coming in a later phase';
-
   return (
     <>
       <main className="mx-auto max-w-6xl px-6 py-8">
+        <ExportStatusBanner pkg={pkg} />
         <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
           <div className="text-sm">
             <span className="font-medium">
@@ -352,9 +353,7 @@ export function PackageEditor({
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" disabled title={futurePhase}>
-              + Add item
-            </Button>
+            <AddItemButton packageId={packageId} />
             <Button
               variant="outline"
               size="sm"
@@ -374,7 +373,7 @@ export function PackageEditor({
         </div>
 
         {items.length === 0 ? (
-          <EmptyState />
+          <EmptyState packageId={packageId} />
         ) : (
           <ItemList
             items={items}
@@ -412,14 +411,14 @@ export function PackageEditor({
   );
 }
 
-function EmptyState() {
+function EmptyState({ packageId }: { packageId: string }) {
   return (
-    <div className="rounded-lg border border-dashed bg-card p-10 text-center">
-      <h3 className="text-base font-medium">No items extracted</h3>
-      <p className="mt-1 text-sm text-muted-foreground">
-        AI couldn&apos;t pull items from these PDFs. Manual item creation is coming in a later
-        phase.
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-card p-10 text-center">
+      <h3 className="text-base font-medium">No items in this package</h3>
+      <p className="text-sm text-muted-foreground">
+        Add a PDF and we&apos;ll classify it and create the item automatically.
       </p>
+      <AddItemButton packageId={packageId} variant="default" label="+ Add PDF" />
     </div>
   );
 }

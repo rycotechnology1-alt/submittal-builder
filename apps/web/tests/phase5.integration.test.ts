@@ -219,7 +219,7 @@ describe('Phase 5 audit-aware item APIs', () => {
     expect(secondBody.doc_type_original_ai_value).toBe('product_data');
   });
 
-  it('all item mutation endpoints return 409 package_exported when status=exported', async () => {
+  it('item mutation endpoints accept edits on exported packages so users can add and adjust items post-export', async () => {
     const user = await createAuthedUser('locked');
     emails.push(user.email);
     const { pkg, item } = await createReadyPackageWithItem(user);
@@ -229,20 +229,19 @@ describe('Phase 5 audit-aware item APIs', () => {
       jsonReq(`/api/v1/items/${item.id}`, user.cookie, { title: 'New' }, 'PATCH'),
       ctx({ id: item.id }),
     );
-    expect(editRes.status).toBe(409);
-    expect(await editRes.json()).toMatchObject({ error: { code: 'package_exported' } });
+    expect(editRes.status).toBe(200);
 
     const attrRes = await attributePUT(
       jsonReq(`/api/v1/items/${item.id}/attributes/manufacturer`, user.cookie, { value: 'x' }, 'PUT'),
       ctx({ id: item.id, key: 'manufacturer' }),
     );
-    expect(attrRes.status).toBe(409);
+    expect(attrRes.status).toBe(200);
 
     const revertRes = await attributeRevertPOST(
       jsonReq(`/api/v1/items/${item.id}/attributes/manufacturer/revert`, user.cookie, {}),
       ctx({ id: item.id, key: 'manufacturer' }),
     );
-    expect(revertRes.status).toBe(409);
+    expect(revertRes.status).toBe(200);
 
     const reorderRes = await reorderPOST(
       jsonReq(`/api/v1/packages/${pkg.id}/items/reorder`, user.cookie, {
@@ -250,7 +249,7 @@ describe('Phase 5 audit-aware item APIs', () => {
       }),
       ctx({ id: pkg.id }),
     );
-    expect(reorderRes.status).toBe(409);
+    expect(reorderRes.status).toBe(200);
   });
 
   it('PATCH /source-pdfs/:id reassigns within the same package; cross-package rejected', async () => {
@@ -395,7 +394,7 @@ describe('Phase 5 audit-aware item APIs', () => {
     expect(res.status).toBe(202);
   });
 
-  it('PATCH /source-pdfs/:id refuses when package is exported', async () => {
+  it('PATCH /source-pdfs/:id allows reassignment on exported packages', async () => {
     const user = await createAuthedUser('reassign-locked');
     emails.push(user.email);
     const { pkg, item } = await createReadyPackageWithItem(user);
@@ -420,7 +419,6 @@ describe('Phase 5 audit-aware item APIs', () => {
       jsonReq(`/api/v1/source-pdfs/${sourcePdf!.id}`, user.cookie, { item_id: null }, 'PATCH'),
       ctx({ id: sourcePdf!.id }),
     );
-    expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ error: { code: 'package_exported' } });
+    expect(res.status).toBe(200);
   });
 });

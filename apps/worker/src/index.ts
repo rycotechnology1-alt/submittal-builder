@@ -60,7 +60,12 @@ async function enqueueChainedJob(kind: JobKind, data: SourcePdfJobData) {
     kind,
     sourcePdfId,
   });
-  if (latest && ['queued', 'running', 'succeeded'].includes(latest.status)) {
+  // Don't block on 'succeeded' here: chained jobs (especially batch_order, which
+  // is package-level and finalizes status='ready') legitimately need to run again
+  // when new items get added to an already-processed package. The /process route
+  // still filters per-PDF jobs by processingStatus, so we don't re-run completed
+  // ocr/classify/extract for unchanged PDFs.
+  if (latest && ['queued', 'running'].includes(latest.status)) {
     return;
   }
 

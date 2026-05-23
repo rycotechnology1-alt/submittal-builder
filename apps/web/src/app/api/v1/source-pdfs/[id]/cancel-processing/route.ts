@@ -6,7 +6,6 @@ import { db, schema } from '@/server/db';
 import {
   findSourcePdfInLivePackage,
   notFound,
-  packageExportedError,
   sourcePdfJson,
 } from '@/server/phase2-records';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
@@ -21,13 +20,6 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
   const result = await withWorkspaceFromHeaders(req.headers, async (ctx) => {
     const sourcePdf = await findSourcePdfInLivePackage(ctx.workspaceId, id);
     if (!sourcePdf) return notFound();
-
-    const [pkg] = await db
-      .select({ status: schema.packages.status })
-      .from(schema.packages)
-      .where(eq(schema.packages.id, sourcePdf.packageId))
-      .limit(1);
-    if (pkg?.status === 'exported') return packageExportedError();
 
     const now = new Date();
     const [updated] = await db

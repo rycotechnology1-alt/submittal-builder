@@ -4,15 +4,16 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, api } from '@/lib/api';
 import type { PackageDetailResponse, ProjectDetailResponse } from '@submittal/shared/api';
 
-import { ExportedPackageView } from './_components/exported-package-view';
 import { PackageHeader } from './_components/package-header';
 import { PackageEditor } from './_components/editor/package-editor';
+import { ProcessingCompletePanel } from './_components/processing-complete-panel';
 import { UploadProcessingPanel } from './_components/upload-processing-panel';
 
 export default function PackageDetailPage() {
@@ -31,6 +32,15 @@ export default function PackageDetailPage() {
       api.get<ProjectDetailResponse>(`/api/v1/projects/${packageQuery.data!.project_id}`),
     enabled: Boolean(packageQuery.data?.project_id),
   });
+
+  const sawProcessingRef = useRef(false);
+  const [hasAcknowledgedReady, setHasAcknowledgedReady] = useState(false);
+
+  useEffect(() => {
+    if (packageQuery.data?.status === 'processing') {
+      sawProcessingRef.current = true;
+    }
+  }, [packageQuery.data?.status]);
 
   if (packageQuery.error) {
     const notFound = packageQuery.error instanceof ApiError && packageQuery.error.status === 404;
@@ -61,19 +71,26 @@ export default function PackageDetailPage() {
   const pkg = packageQuery.data;
   const project = projectQuery.data?.project ?? null;
 
+  const isProcessing = pkg.status === 'draft' || pkg.status === 'processing';
+  const showCompletionInterstitial =
+    !isProcessing && sawProcessingRef.current && !hasAcknowledgedReady;
+
   return (
     <>
       <PackageHeader pkg={pkg} project={project} />
-      {pkg.status === 'draft' || pkg.status === 'processing' ? (
+      {isProcessing ? (
         <UploadProcessingPanel
           packageId={pkg.id}
           packageStatus={pkg.status}
           sourcePdfCount={pkg.source_pdf_count}
         />
-      ) : pkg.status === 'ready' ? (
-        <PackageEditor pkg={pkg} project={project} />
+      ) : showCompletionInterstitial ? (
+        <ProcessingCompletePanel
+          pkg={pkg}
+          onContinue={() => setHasAcknowledgedReady(true)}
+        />
       ) : (
-        <ExportedPackageView pkg={pkg} project={project} />
+        <PackageEditor pkg={pkg} project={project} />
       )}
     </>
   );

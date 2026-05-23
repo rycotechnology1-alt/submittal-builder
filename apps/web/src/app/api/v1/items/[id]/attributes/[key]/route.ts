@@ -7,12 +7,7 @@ import {
 
 import { jsonError, parseJson, type RouteContext, uuidParam } from '@/server/api';
 import { db, schema } from '@/server/db';
-import {
-  findLiveItem,
-  itemAttributeJson,
-  notFound,
-  packageExportedError,
-} from '@/server/phase2-records';
+import { findLiveItem, itemAttributeJson, notFound } from '@/server/phase2-records';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
 
 async function resolveAttributeKey<T extends Record<string, string>>(
@@ -41,13 +36,6 @@ export async function PUT(
   const result = await withWorkspaceFromHeaders(req.headers, async (ctx) => {
     const item = await findLiveItem(ctx.workspaceId, itemId);
     if (!item) return notFound();
-
-    const [pkg] = await db
-      .select({ status: schema.packages.status })
-      .from(schema.packages)
-      .where(eq(schema.packages.id, item.packageId))
-      .limit(1);
-    if (pkg?.status === 'exported') return packageExportedError();
 
     const now = new Date();
     const [existing] = await db

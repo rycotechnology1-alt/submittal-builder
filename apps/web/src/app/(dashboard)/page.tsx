@@ -12,6 +12,7 @@ import { ApiError, api } from '@/lib/api';
 import type { ProjectResponse } from '@submittal/shared/api';
 
 import { NewProjectDialog } from './_components/new-project-dialog';
+import { ProjectRowMenu } from './_components/project-row-menu';
 
 type ProjectListResponse = { data: ProjectResponse[]; next_cursor: string | null };
 
@@ -79,10 +80,13 @@ export default function DashboardPage() {
       ) : (
         <ul className="divide-y rounded-lg border bg-card">
           {filtered.map((project) => (
-            <li key={project.id}>
+            <li
+              key={project.id}
+              className="flex items-center gap-2 px-2 transition-colors hover:bg-accent/40"
+            >
               <Link
                 href={`/projects/${project.id}`}
-                className="flex items-center justify-between gap-4 px-4 py-4 transition-colors hover:bg-accent/40"
+                className="flex min-w-0 flex-1 items-center justify-between gap-4 px-2 py-4"
               >
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-3">
@@ -104,6 +108,7 @@ export default function DashboardPage() {
                 </div>
                 <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
               </Link>
+              <ProjectRowMenu projectId={project.id} projectName={project.name} />
             </li>
           ))}
         </ul>

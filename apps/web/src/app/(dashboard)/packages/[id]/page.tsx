@@ -13,6 +13,7 @@ import type { PackageDetailResponse, ProjectDetailResponse } from '@submittal/sh
 
 import { PackageHeader } from './_components/package-header';
 import { PackageEditor } from './_components/editor/package-editor';
+import { PackageDangerZone } from './_components/package-danger-zone';
 import { ProcessingCompletePanel } from './_components/processing-complete-panel';
 import { UploadProcessingPanel } from './_components/upload-processing-panel';
 
@@ -75,6 +76,8 @@ export default function PackageDetailPage() {
   const showCompletionInterstitial =
     !isProcessing && sawProcessingRef.current && !hasAcknowledgedReady;
 
+  const packageLabel = pkg.title?.trim() || pkg.submittal_number;
+
   return (
     <>
       <PackageHeader pkg={pkg} project={project} />
@@ -92,6 +95,11 @@ export default function PackageDetailPage() {
       ) : (
         <PackageEditor pkg={pkg} project={project} />
       )}
+      <PackageDangerZone
+        packageId={pkg.id}
+        packageLabel={packageLabel}
+        projectId={pkg.project_id}
+      />
     </>
   );
 }

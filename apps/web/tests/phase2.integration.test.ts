@@ -193,7 +193,7 @@ describe('Phase 2 workspace/project/package/item CRUD', () => {
     expect(invalidId.status).toBe(404);
   });
 
-  it('creates, lists, updates, and soft-deletes projects', async () => {
+  it('creates, lists, updates, and hard-deletes projects', async () => {
     const user = await createAuthedUser('projects');
     emails.push(user.email);
 
@@ -224,7 +224,7 @@ describe('Phase 2 workspace/project/package/item CRUD', () => {
     expect(afterBody.data.map((p) => p.id)).not.toContain(project.id);
   });
 
-  it('hides packages when the parent project is soft-deleted without cascading package deletion', async () => {
+  it('cascades package deletion when the parent project is hard-deleted', async () => {
     const user = await createAuthedUser('packages');
     emails.push(user.email);
     const project = await createProject(user.cookie, 'Tower');
@@ -260,18 +260,17 @@ describe('Phase 2 workspace/project/package/item CRUD', () => {
       ctx({ id: project.id }),
     );
 
-    const hidden = await projectPackagesGET(
+    const orphanedPackages = await projectPackagesGET(
       authedReq(`/api/v1/projects/${project.id}/packages`, user.cookie),
       ctx({ projectId: project.id }),
     );
-    expect(hidden.status).toBe(404);
+    expect(orphanedPackages.status).toBe(404);
 
-    const [row] = await db
-      .select({ deletedAt: schema.packages.deletedAt })
+    const pkgRow = await db
+      .select()
       .from(schema.packages)
-      .where(eq(schema.packages.id, pkg.id))
-      .limit(1);
-    expect(row?.deletedAt).toBeNull();
+      .where(eq(schema.packages.id, pkg.id));
+    expect(pkgRow).toHaveLength(0);
   });
 
   it('creates manual items with attributes, lists them, patches and reorders them', async () => {

@@ -15,6 +15,7 @@ import type { ProjectDetailResponse } from '@submittal/shared/api';
 
 import { EditableProjectMetadata } from './_components/editable-project-metadata';
 import { NewPackageDialog } from './_components/new-package-dialog';
+import { ProjectDangerZone } from './_components/project-danger-zone';
 
 type PackageSummary = ProjectDetailResponse['packages'][number];
 
@@ -151,6 +152,8 @@ export default function ProjectDetailPage() {
           ))}
         </ul>
       )}
+
+      <ProjectDangerZone projectId={project.id} projectName={project.name} />
     </div>
   );
 }

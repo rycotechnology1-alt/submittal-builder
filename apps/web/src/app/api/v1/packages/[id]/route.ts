@@ -7,10 +7,12 @@ import { db, schema } from '@/server/db';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
 import {
   findLivePackage,
+  findPackageInWorkspace,
   latestExportSummaryJson,
   notFound,
   packageJson,
 } from '@/server/phase2-records';
+import { bestEffortDeleteObjects, collectPackageStorageKeys } from '@/server/hard-delete';
 
 export async function GET(req: Request, context: RouteContext<{ id: string }>) {
   const id = await uuidParam(context, 'id');
@@ -95,13 +97,12 @@ export async function DELETE(req: Request, context: RouteContext<{ id: string }>
   if (id instanceof Response) return id;
 
   const result = await withWorkspaceFromHeaders(req.headers, async (ctx) => {
-    const pkg = await findLivePackage(ctx.workspaceId, id);
+    const pkg = await findPackageInWorkspace(ctx.workspaceId, id);
     if (!pkg) return notFound();
 
-    await db
-      .update(schema.packages)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(schema.packages.id, pkg.id));
+    const keys = await collectPackageStorageKeys(pkg.id, ctx.workspaceId);
+    await db.delete(schema.packages).where(eq(schema.packages.id, pkg.id));
+    await bestEffortDeleteObjects(keys);
 
     return noContent();
   });

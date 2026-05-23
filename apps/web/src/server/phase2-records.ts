@@ -125,6 +125,28 @@ export async function findLiveProject(workspaceId: string, projectId: string) {
   return project ?? null;
 }
 
+export async function findProjectInWorkspace(workspaceId: string, projectId: string) {
+  const [project] = await db
+    .select()
+    .from(schema.projects)
+    .where(
+      and(eq(schema.projects.id, projectId), eq(schema.projects.workspaceId, workspaceId)),
+    )
+    .limit(1);
+  return project ?? null;
+}
+
+export async function findPackageInWorkspace(workspaceId: string, packageId: string) {
+  const [pkg] = await db
+    .select()
+    .from(schema.packages)
+    .where(
+      and(eq(schema.packages.id, packageId), eq(schema.packages.workspaceId, workspaceId)),
+    )
+    .limit(1);
+  return pkg ?? null;
+}
+
 export async function findLivePackage(workspaceId: string, packageId: string) {
   const [pkg] = await db
     .select()

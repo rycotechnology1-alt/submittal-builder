@@ -7,10 +7,12 @@ import { db, schema } from '@/server/db';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
 import {
   findLiveProject,
+  findProjectInWorkspace,
   notFound,
   projectJson,
   projectPackageSummaryJson,
 } from '@/server/phase2-records';
+import { bestEffortDeleteObjects, collectPackageStorageKeys } from '@/server/hard-delete';
 
 export async function GET(req: Request, context: RouteContext<{ id: string }>) {
   const id = await uuidParam(context, 'id');
@@ -76,13 +78,21 @@ export async function DELETE(req: Request, context: RouteContext<{ id: string }>
   if (id instanceof Response) return id;
 
   const result = await withWorkspaceFromHeaders(req.headers, async (ctx) => {
-    const project = await findLiveProject(ctx.workspaceId, id);
+    const project = await findProjectInWorkspace(ctx.workspaceId, id);
     if (!project) return notFound();
 
-    await db
-      .update(schema.projects)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(schema.projects.id, project.id));
+    const pkgs = await db
+      .select({ id: schema.packages.id })
+      .from(schema.packages)
+      .where(eq(schema.packages.projectId, project.id));
+
+    const keyGroups = await Promise.all(
+      pkgs.map((p) => collectPackageStorageKeys(p.id, ctx.workspaceId)),
+    );
+    const keys = keyGroups.flat();
+
+    await db.delete(schema.projects).where(eq(schema.projects.id, project.id));
+    await bestEffortDeleteObjects(keys);
 
     return noContent();
   });

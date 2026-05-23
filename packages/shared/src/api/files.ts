@@ -88,3 +88,5 @@ export const logoConfirmRequestSchema = z
 export type SourcePdfPresignRequest = z.infer<typeof sourcePdfPresignRequestSchema>;
 export type SourcePdfResponse = z.infer<typeof sourcePdfResponseSchema>;
 export type LogoPresignRequest = z.infer<typeof logoPresignRequestSchema>;
+export type LogoPresignResponse = z.infer<typeof logoPresignResponseSchema>;
+export type LogoConfirmRequest = z.infer<typeof logoConfirmRequestSchema>;

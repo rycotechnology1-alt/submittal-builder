@@ -30,8 +30,6 @@ import {
 import type { CoverSheetField } from './cover-sheet-helpers';
 import { buildPackagePatch } from './cover-sheet-helpers';
 
-const FUTURE_PHASE_LABEL = 'Coming in a later phase';
-
 export function CoverSheetDrawer({
   open,
   onOpenChange,
@@ -166,13 +164,13 @@ export function CoverSheetDrawer({
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Workspace defaults
             </h3>
-            <span
-              className="inline-flex cursor-not-allowed items-center gap-1 text-xs text-muted-foreground/70"
-              title={FUTURE_PHASE_LABEL}
+            <Link
+              href="/settings/workspace"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
             >
               Change in workspace settings
               <ArrowUpRight className="h-3 w-3" />
-            </span>
+            </Link>
           </div>
           {workspaceQuery.isLoading ? (
             <div className="space-y-2">

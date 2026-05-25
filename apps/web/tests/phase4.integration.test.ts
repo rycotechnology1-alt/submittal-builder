@@ -253,8 +253,16 @@ describe('Phase 4 processing pipeline', () => {
       status: 'processing',
       jobs_summary: { queued: 2, running: 0, failed: 0 },
       source_pdfs: expect.arrayContaining([
-        { id: textReady.pdf.id, processing_status: 'classifying', processing_error: null },
-        { id: needsOcr.pdf.id, processing_status: 'ocr_running', processing_error: null },
+        expect.objectContaining({
+          id: textReady.pdf.id,
+          processing_status: 'classifying',
+          processing_error: null,
+        }),
+        expect.objectContaining({
+          id: needsOcr.pdf.id,
+          processing_status: 'ocr_running',
+          processing_error: null,
+        }),
       ]),
     });
 

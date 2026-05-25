@@ -23,6 +23,9 @@ export async function GET(req: Request, context: RouteContext<{ id: string }>) {
           id: schema.sourcePdfs.id,
           processingStatus: schema.sourcePdfs.processingStatus,
           processingError: schema.sourcePdfs.processingError,
+          originalFilename: schema.sourcePdfs.originalFilename,
+          byteSize: schema.sourcePdfs.byteSize,
+          pageCount: schema.sourcePdfs.pageCount,
         })
         .from(schema.sourcePdfs)
         .where(
@@ -68,6 +71,9 @@ export async function GET(req: Request, context: RouteContext<{ id: string }>) {
         id: pdf.id,
         processing_status: pdf.processingStatus,
         processing_error: pdf.processingError,
+        original_filename: pdf.originalFilename,
+        byte_size: pdf.byteSize,
+        page_count: pdf.pageCount,
       })),
       jobs_summary: {
         queued: jobs.filter((job) => job.status === 'queued').length,

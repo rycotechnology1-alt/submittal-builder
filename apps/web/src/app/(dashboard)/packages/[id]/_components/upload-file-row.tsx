@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   FileText,
   Loader2,
+  Trash2,
   UploadCloud,
   XCircle,
 } from 'lucide-react';
@@ -35,6 +36,8 @@ export type UploadFileRowData = {
   error?: string | null;
   canCancel?: boolean;
   cancelPending?: boolean;
+  canRemove?: boolean;
+  removePending?: boolean;
 };
 
 const stageLabels: Record<UploadRowStage, string> = {
@@ -52,9 +55,11 @@ const stageLabels: Record<UploadRowStage, string> = {
 export function UploadFileRow({
   row,
   onCancel,
+  onRemove,
 }: {
   row: UploadFileRowData;
   onCancel?: (row: UploadFileRowData) => void;
+  onRemove?: (row: UploadFileRowData) => void;
 }) {
   const isActive = ['presigning', 'uploading', 'confirming', 'uploaded', 'processing'].includes(
     row.stage,
@@ -93,6 +98,24 @@ export function UploadFileRow({
                 disabled={row.cancelPending}
               >
                 <XCircle className="h-4 w-4" />
+              </Button>
+            ) : null}
+            {row.canRemove ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                aria-label={`Remove ${row.fileName}`}
+                title="Remove this PDF"
+                onClick={() => onRemove?.(row)}
+                disabled={row.removePending}
+              >
+                {row.removePending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
               </Button>
             ) : null}
             <Badge variant={row.stage === 'error' ? 'destructive' : 'secondary'}>

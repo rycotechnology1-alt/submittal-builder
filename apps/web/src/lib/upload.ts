@@ -22,7 +22,7 @@ export function isPdfFile(file: File): boolean {
 export function partitionUploadBatch(files: readonly File[]): UploadBatchRow[] {
   return files.map((file, index) => {
     const base = {
-      id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+      id: `upload-${makeRowId()}`,
       file,
     };
 
@@ -82,6 +82,13 @@ export async function putFileWithProgress({
 
     xhr.send(file);
   });
+}
+
+function makeRowId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function blockedUploadMessage(uploadUrl: string): string {

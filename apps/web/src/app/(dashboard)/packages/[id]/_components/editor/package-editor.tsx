@@ -1,6 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -8,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, api } from '@/lib/api';
 import type {
+  ExportDownloadResponse,
   PackageDetailResponse,
   PackageItemResponse,
   ProjectResponse,
@@ -21,6 +24,7 @@ import { ExportDialog } from './export-dialog';
 import { ExportStatusBanner } from './export-status-banner';
 import { applyReorder, countItemsNeedingReview } from './item-helpers';
 import { ItemList } from './item-list';
+import { PdfPreview } from '../pdf-preview';
 
 type Attribute = PackageItemResponse['attributes'][number];
 type ItemsQueryData = PackageItemResponse[];
@@ -36,10 +40,46 @@ export function PackageEditor({
 }) {
   const packageId = pkg.id;
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [citationTarget, setCitationTarget] = useState<CitationTarget | null>(null);
   const [coverSheetOpen, setCoverSheetOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewExportId, setPreviewExportId] = useState<string | null>(null);
+
+  const latestExport = pkg.latest_export;
+  const latestReadyExport =
+    latestExport && latestExport.status === 'ready' ? latestExport : null;
+
+  useEffect(() => {
+    if (!latestReadyExport) {
+      if (previewExportId !== null) {
+        setPreviewExportId(null);
+        setPreviewUrl(null);
+      }
+      return;
+    }
+    if (previewExportId === latestReadyExport.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get<ExportDownloadResponse>(
+          `/api/v1/exports/${latestReadyExport.id}/download?disposition=inline`,
+        );
+        if (cancelled) return;
+        setPreviewUrl(res.url);
+        setPreviewExportId(latestReadyExport.id);
+      } catch (err) {
+        if (cancelled) return;
+        toast.error(err instanceof ApiError ? err.message : 'Could not load preview.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [latestReadyExport, previewExportId]);
 
   const itemsQuery = useQuery({
     queryKey: itemsKey(packageId),
@@ -353,6 +393,14 @@ export function PackageEditor({
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push(`${pathname}?view=upload`)}
+            >
+              <Plus className="h-4 w-4" />
+              Add more PDFs
+            </Button>
             <AddItemButton packageId={packageId} />
             <Button
               variant="outline"
@@ -391,6 +439,17 @@ export function PackageEditor({
             onRowFocus={setFocusedRowIndex}
           />
         )}
+
+        <section className="mt-8">
+          <h3 className="text-sm font-medium text-muted-foreground">Package preview</h3>
+          <div className="mt-3 flex justify-center rounded-lg border bg-muted/30 p-4">
+            {latestReadyExport ? (
+              <PdfPreview url={previewUrl} />
+            ) : (
+              <PreviewEmptyState />
+            )}
+          </div>
+        </section>
       </main>
 
       <CitationDrawer target={citationTarget} onClose={() => setCitationTarget(null)} />
@@ -408,6 +467,15 @@ export function PackageEditor({
         items={items}
       />
     </>
+  );
+}
+
+function PreviewEmptyState() {
+  return (
+    <div className="flex h-[680px] w-full max-w-[540px] flex-col items-center justify-center gap-2 rounded border border-dashed bg-card text-center text-sm text-muted-foreground">
+      <p className="font-medium text-foreground">No preview yet</p>
+      <p>Export the package to see the rendered PDF here.</p>
+    </div>
   );
 }
 

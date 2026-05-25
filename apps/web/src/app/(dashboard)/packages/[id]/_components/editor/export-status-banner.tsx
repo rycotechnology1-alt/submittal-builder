@@ -14,22 +14,23 @@ import type {
 import { formatBytes, formatRelativeTime } from './export-helpers';
 
 export function ExportStatusBanner({ pkg }: { pkg: PackageDetailResponse }) {
-  const latest = pkg.latest_export;
-  if (!latest || latest.status !== 'ready') return null;
-
-  const isExported = pkg.status === 'exported';
-
   const downloadMutation = useMutation({
     mutationFn: (exportId: string) =>
-      api.get<ExportDownloadResponse>(`/api/v1/exports/${exportId}/download`),
+      api.get<ExportDownloadResponse>(
+        `/api/v1/exports/${exportId}/download?disposition=attachment`,
+      ),
     onSuccess: (data) => {
-      if (typeof window === 'undefined') return;
-      window.location.assign(data.url);
+      triggerBrowserDownload(data.url);
     },
     onError: (err) => {
       toast.error(err instanceof ApiError ? err.message : 'Could not generate download link.');
     },
   });
+
+  const latest = pkg.latest_export;
+  if (!latest || latest.status !== 'ready') return null;
+
+  const isExported = pkg.status === 'exported';
 
   return (
     <div
@@ -65,4 +66,15 @@ export function ExportStatusBanner({ pkg }: { pkg: PackageDetailResponse }) {
       </Button>
     </div>
   );
+}
+
+function triggerBrowserDownload(url: string): void {
+  if (typeof window === 'undefined') return;
+  const link = document.createElement('a');
+  link.href = url;
+  link.rel = 'noopener';
+  link.setAttribute('download', '');
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }

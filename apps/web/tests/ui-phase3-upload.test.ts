@@ -151,8 +151,8 @@ describe('package processing status helpers', () => {
       ...baseStatus,
       has_errors: true,
       source_pdfs: [
-        { id: crypto.randomUUID(), processing_status: 'error', processing_error: 'S3 denied' },
-        { id: crypto.randomUUID(), processing_status: 'classifying', processing_error: null },
+        { id: crypto.randomUUID(), processing_status: 'error', processing_error: 'S3 denied', original_filename: 'a.pdf', byte_size: null, page_count: null },
+        { id: crypto.randomUUID(), processing_status: 'classifying', processing_error: null, original_filename: 'b.pdf', byte_size: null, page_count: null },
       ],
     };
 
@@ -168,8 +168,8 @@ describe('package processing status helpers', () => {
       can_cancel: false,
       terminal_counts: { extracted: 1, error: 1, cancelled: 0 },
       source_pdfs: [
-        { id: crypto.randomUUID(), processing_status: 'extracted', processing_error: null },
-        { id: crypto.randomUUID(), processing_status: 'error', processing_error: 'S3 denied' },
+        { id: crypto.randomUUID(), processing_status: 'extracted', processing_error: null, original_filename: 'a.pdf', byte_size: null, page_count: null },
+        { id: crypto.randomUUID(), processing_status: 'error', processing_error: 'S3 denied', original_filename: 'a.pdf', byte_size: null, page_count: null },
       ],
     };
 

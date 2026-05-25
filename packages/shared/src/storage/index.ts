@@ -18,6 +18,7 @@ export type PresignPutInput = {
 export type PresignGetInput = {
   key: string;
   expiresInSeconds: number;
+  responseContentDisposition?: string;
 };
 
 export type StorageHead = {
@@ -79,9 +80,17 @@ export function createS3Storage(config: S3StorageConfig): AppStorage {
     },
 
     async presignGetUrl(input) {
-      return getSignedUrl(client, new GetObjectCommand({ Bucket: config.bucket, Key: input.key }), {
-        expiresIn: input.expiresInSeconds,
-      });
+      return getSignedUrl(
+        client,
+        new GetObjectCommand({
+          Bucket: config.bucket,
+          Key: input.key,
+          ...(input.responseContentDisposition
+            ? { ResponseContentDisposition: input.responseContentDisposition }
+            : {}),
+        }),
+        { expiresIn: input.expiresInSeconds },
+      );
     },
 
     async headObject(key) {

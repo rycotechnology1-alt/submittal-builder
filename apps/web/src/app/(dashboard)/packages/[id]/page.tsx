@@ -3,8 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,12 +13,15 @@ import type { PackageDetailResponse, ProjectDetailResponse } from '@submittal/sh
 import { PackageHeader } from './_components/package-header';
 import { PackageEditor } from './_components/editor/package-editor';
 import { PackageDangerZone } from './_components/package-danger-zone';
-import { ProcessingCompletePanel } from './_components/processing-complete-panel';
 import { UploadProcessingPanel } from './_components/upload-processing-panel';
+
+type PackageView = 'upload' | 'assemble';
 
 export default function PackageDetailPage() {
   const params = useParams<{ id: string }>();
   const packageId = params.id;
+  const searchParams = useSearchParams();
+  const viewParam = searchParams.get('view');
 
   const packageQuery = useQuery({
     queryKey: ['package', packageId],
@@ -33,15 +35,6 @@ export default function PackageDetailPage() {
       api.get<ProjectDetailResponse>(`/api/v1/projects/${packageQuery.data!.project_id}`),
     enabled: Boolean(packageQuery.data?.project_id),
   });
-
-  const sawProcessingRef = useRef(false);
-  const [hasAcknowledgedReady, setHasAcknowledgedReady] = useState(false);
-
-  useEffect(() => {
-    if (packageQuery.data?.status === 'processing') {
-      sawProcessingRef.current = true;
-    }
-  }, [packageQuery.data?.status]);
 
   if (packageQuery.error) {
     const notFound = packageQuery.error instanceof ApiError && packageQuery.error.status === 404;
@@ -72,25 +65,17 @@ export default function PackageDetailPage() {
   const pkg = packageQuery.data;
   const project = projectQuery.data?.project ?? null;
 
-  const isProcessing = pkg.status === 'draft' || pkg.status === 'processing';
-  const showCompletionInterstitial =
-    !isProcessing && sawProcessingRef.current && !hasAcknowledgedReady;
-
+  const view = resolveView(viewParam, pkg);
   const packageLabel = pkg.title?.trim() || pkg.submittal_number;
 
   return (
     <>
       <PackageHeader pkg={pkg} project={project} />
-      {isProcessing ? (
+      {view === 'upload' ? (
         <UploadProcessingPanel
           packageId={pkg.id}
           packageStatus={pkg.status}
           sourcePdfCount={pkg.source_pdf_count}
-        />
-      ) : showCompletionInterstitial ? (
-        <ProcessingCompletePanel
-          pkg={pkg}
-          onContinue={() => setHasAcknowledgedReady(true)}
         />
       ) : (
         <PackageEditor pkg={pkg} project={project} />
@@ -102,6 +87,18 @@ export default function PackageDetailPage() {
       />
     </>
   );
+}
+
+function resolveView(
+  viewParam: string | null,
+  pkg: PackageDetailResponse,
+): PackageView {
+  if (viewParam === 'upload') return 'upload';
+  if (viewParam === 'assemble') return 'assemble';
+  if (pkg.status === 'draft' || pkg.status === 'processing' || pkg.source_pdf_count === 0) {
+    return 'upload';
+  }
+  return 'assemble';
 }
 
 function PackageSkeleton() {

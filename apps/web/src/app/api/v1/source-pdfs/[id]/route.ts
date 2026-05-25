@@ -71,12 +71,18 @@ export async function DELETE(req: Request, context: RouteContext<{ id: string }>
     const sourcePdf = await findSourcePdfInLivePackage(ctx.workspaceId, id);
     if (!sourcePdf) return notFound();
 
-    const [exportCount] = await db
-      .select({ value: count() })
-      .from(schema.exports)
-      .where(eq(schema.exports.packageId, sourcePdf.packageId));
-    if ((exportCount?.value ?? 0) > 0) {
-      return jsonError(409, 'source_pdf_exported', 'Source PDF is referenced by an export');
+    // Source PDFs that were never extracted (cancelled, errored, or still in an
+    // earlier stage) have no source pages, so they cannot be referenced by any
+    // export. Allow them to be deleted unconditionally. Extracted PDFs may have
+    // contributed pages to a rendered export and remain protected.
+    if (sourcePdf.processingStatus === 'extracted') {
+      const [exportCount] = await db
+        .select({ value: count() })
+        .from(schema.exports)
+        .where(eq(schema.exports.packageId, sourcePdf.packageId));
+      if ((exportCount?.value ?? 0) > 0) {
+        return jsonError(409, 'source_pdf_exported', 'Source PDF is referenced by an export');
+      }
     }
 
     await getStorage().deleteObject(sourcePdf.storageKey);

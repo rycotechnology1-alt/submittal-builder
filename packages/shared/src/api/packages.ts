@@ -73,6 +73,9 @@ export const packageStatusResponseSchema = z.object({
         'cancelled',
       ]),
       processing_error: z.string().nullable().optional(),
+      original_filename: z.string(),
+      byte_size: z.number().int().nullable(),
+      page_count: z.number().int().nullable(),
     }),
   ),
   jobs_summary: z.object({

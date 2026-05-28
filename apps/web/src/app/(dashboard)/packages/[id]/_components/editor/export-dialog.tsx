@@ -35,6 +35,8 @@ import {
 
 type DialogPhase = 'confirm' | 'rendering' | 'error';
 
+const REVISION_OPTIONS = ['R0', 'R1', 'R2', 'R3', 'R4', 'R5'];
+
 export function ExportDialog({
   open,
   onOpenChange,
@@ -54,6 +56,7 @@ export function ExportDialog({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [batesPrefix, setBatesPrefix] = useState(() => defaultBatesPrefix(pkg));
   const [batesError, setBatesError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(pkg.revision);
 
   useEffect(() => {
     if (open) {
@@ -62,6 +65,7 @@ export function ExportDialog({
       setErrorMessage(null);
       setBatesPrefix(defaultBatesPrefix(pkg));
       setBatesError(null);
+      setRevision(pkg.revision);
     }
   }, [open, pkg]);
 
@@ -113,9 +117,8 @@ export function ExportDialog({
       return;
     }
     setBatesError(null);
-    const body: CreateExportRequest = validation.value
-      ? { bates_prefix: validation.value }
-      : {};
+    const body: CreateExportRequest = { revision };
+    if (validation.value) body.bates_prefix = validation.value;
     createMutation.mutate(body);
   }
 
@@ -155,6 +158,30 @@ export function ExportDialog({
                 <li>Bates-style numbering on every page</li>
                 <li>PDF bookmarks per item</li>
               </ul>
+            </section>
+
+            <section className="space-y-1">
+              <label htmlFor="export-revision" className="text-sm font-medium">
+                Export as
+              </label>
+              <select
+                id="export-revision"
+                value={revision}
+                onChange={(e) => setRevision(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {(REVISION_OPTIONS.includes(revision)
+                  ? REVISION_OPTIONS
+                  : [revision, ...REVISION_OPTIONS]
+                ).map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Stamped on the cover sheet and saved with this export.
+              </p>
             </section>
 
             <section className="space-y-1">

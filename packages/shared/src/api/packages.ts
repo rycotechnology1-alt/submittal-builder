@@ -20,6 +20,7 @@ export const packageSchema = z.object({
 export const packageLatestExportSummarySchema = z.object({
   id: uuidSchema,
   status: z.enum(['pending', 'rendering', 'ready', 'failed']),
+  revision: z.string().nullable(),
   byte_size: z.number().int().nonnegative().nullable(),
   page_count: z.number().int().nonnegative().nullable(),
   created_at: isoTimestampSchema,

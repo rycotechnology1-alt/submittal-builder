@@ -9,6 +9,7 @@ export const exportSchema = z.object({
   package_id: uuidSchema,
   status: exportStatusSchema,
   bates_prefix: z.string().nullable(),
+  revision: z.string().nullable(),
   byte_size: z.number().int().nonnegative().nullable(),
   page_count: z.number().int().nonnegative().nullable(),
   error: z.string().nullable(),
@@ -25,6 +26,7 @@ export const createExportRequestSchema = z
       .max(16)
       .regex(/^[A-Za-z0-9._-]+$/, 'Bates prefix may contain only letters, numbers, . _ -')
       .optional(),
+    revision: z.string().trim().min(1).max(16).optional(),
   })
   .strict();
 

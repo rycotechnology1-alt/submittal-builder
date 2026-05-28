@@ -334,6 +334,53 @@ describe('Phase 5 audit-aware item APIs', () => {
     });
   });
 
+  it('POST /packages/:id/exports stamps the chosen revision and updates the package', async () => {
+    const user = await createAuthedUser('export-revision');
+    emails.push(user.email);
+    const { pkg } = await createReadyPackageWithItem(user);
+
+    const { POST: exportsPOST } = await loadExportsRoutes();
+    const res = await exportsPOST(
+      jsonReq(`/api/v1/packages/${pkg.id}/exports`, user.cookie, { revision: 'R1' }),
+      ctx({ id: pkg.id }),
+    );
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { export_id: string };
+
+    const [exportRow] = await db
+      .select()
+      .from(schema.exports)
+      .where(eq(schema.exports.id, body.export_id));
+    expect(exportRow!.revision).toBe('R1');
+
+    const [pkgRow] = await db
+      .select()
+      .from(schema.packages)
+      .where(eq(schema.packages.id, pkg.id));
+    expect(pkgRow!.revision).toBe('R1');
+  });
+
+  it('POST /packages/:id/exports falls back to the package revision when none is given', async () => {
+    const user = await createAuthedUser('export-revision-default');
+    emails.push(user.email);
+    const { pkg } = await createReadyPackageWithItem(user);
+    await db.update(schema.packages).set({ revision: 'R2' }).where(eq(schema.packages.id, pkg.id));
+
+    const { POST: exportsPOST } = await loadExportsRoutes();
+    const res = await exportsPOST(
+      jsonReq(`/api/v1/packages/${pkg.id}/exports`, user.cookie, {}),
+      ctx({ id: pkg.id }),
+    );
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { export_id: string };
+
+    const [exportRow] = await db
+      .select()
+      .from(schema.exports)
+      .where(eq(schema.exports.id, body.export_id));
+    expect(exportRow!.revision).toBe('R2');
+  });
+
   it('POST /packages/:id/exports rejects when package is still in draft/processing', async () => {
     const user = await createAuthedUser('export-not-ready');
     emails.push(user.email);

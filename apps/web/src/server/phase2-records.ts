@@ -231,6 +231,7 @@ export function exportJson(row: Export) {
     package_id: row.packageId,
     status: row.status,
     bates_prefix: row.batesPrefix,
+    revision: row.revision,
     byte_size: row.byteSize,
     page_count: row.pageCount,
     error: row.error,
@@ -244,6 +245,7 @@ export function latestExportSummaryJson(row: Export | null) {
   return {
     id: row.id,
     status: row.status,
+    revision: row.revision,
     byte_size: row.byteSize,
     page_count: row.pageCount,
     created_at: iso(row.createdAt)!,

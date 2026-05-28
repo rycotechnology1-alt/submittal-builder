@@ -52,6 +52,14 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
       );
     }
 
+    const revision = body.revision ?? pkg.revision;
+    if (body.revision && body.revision !== pkg.revision) {
+      await db
+        .update(schema.packages)
+        .set({ revision: body.revision, updatedAt: new Date() })
+        .where(eq(schema.packages.id, pkg.id));
+    }
+
     const exportId = crypto.randomUUID();
     const storageKey = `workspaces/${ctx.workspaceId}/exports/${exportId}.pdf`;
 
@@ -63,6 +71,7 @@ export async function POST(req: Request, context: RouteContext<{ id: string }>) 
         createdByUserId: ctx.userId,
         storageKey,
         batesPrefix: body.bates_prefix ?? null,
+        revision,
         status: 'pending',
       })
       .returning();

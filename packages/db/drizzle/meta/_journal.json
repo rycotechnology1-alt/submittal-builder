@@ -22,6 +22,13 @@
       "when": 1779453600000,
       "tag": "0002_processing_cancellation",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780010045384,
+      "tag": "0003_medical_havok",
+      "breakpoints": true
     }
   ]
 }

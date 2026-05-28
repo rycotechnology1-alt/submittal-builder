@@ -347,6 +347,7 @@ export const exports = pgTable(
     byteSize: bigint('byte_size', { mode: 'number' }),
     pageCount: integer('page_count'),
     batesPrefix: text('bates_prefix'),
+    revision: text('revision'),
     status: exportStatus('status').notNull().default('pending'),
     error: text('error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

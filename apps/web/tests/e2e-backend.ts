@@ -301,7 +301,7 @@ async function main() {
   }
   const exportSha = sha256(Buffer.from(exportBytes));
 
-  console.log('[e2e] re-edit attempt on exported package should 409');
+  console.log('[e2e] re-edit after export should now succeed (no lock)');
   const reEditRes = await fetch(url(`/api/v1/items/${target.item.id}/attributes/${beforeAttr.key}`), {
     method: 'PUT',
     headers: {
@@ -309,10 +309,25 @@ async function main() {
       origin: baseUrl,
       cookie: jar.header(),
     },
-    body: JSON.stringify({ value: 'should be blocked' }),
+    body: JSON.stringify({ value: `${edited} (post-export)` }),
   });
-  if (reEditRes.status !== 409) {
-    throw new Error(`Expected 409 package_exported, got ${reEditRes.status}`);
+  if (reEditRes.status !== 200) {
+    throw new Error(`Expected 200 on post-export edit, got ${reEditRes.status}`);
+  }
+
+  console.log('[e2e] second export under a bumped revision');
+  const exportRes2 = await post<{ export_id: string }>(`/api/v1/packages/${pkg.id}/exports`, {
+    revision: 'R1',
+  });
+  await pollExportReady(exportRes2.export_id);
+
+  console.log('[e2e] export history lists both revisions');
+  const history = await get<Array<{ id: string; status: string; revision: string | null }>>(
+    `/api/v1/packages/${pkg.id}/exports`,
+  );
+  const readyRevisions = history.filter((e) => e.status === 'ready').map((e) => e.revision);
+  if (!readyRevisions.includes('R0') || !readyRevisions.includes('R1')) {
+    throw new Error(`Expected R0 and R1 in export history, got ${JSON.stringify(readyRevisions)}`);
   }
 
   console.log(
@@ -323,6 +338,7 @@ async function main() {
         item_count: items.length,
         edited_attribute: { item_id: target.item.id, key: beforeAttr.key },
         export_id: exportRes.export_id,
+        export_id_r1: exportRes2.export_id,
         export_byte_size: exportBytes.byteLength,
         export_page_count: exportRow.page_count,
         export_sha256: exportSha,

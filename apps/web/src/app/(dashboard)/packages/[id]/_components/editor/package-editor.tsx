@@ -21,6 +21,7 @@ import { CitationDrawer, type CitationTarget } from './citation-drawer';
 import { CoverSheetDrawer } from './cover-sheet-drawer';
 import { type DocType } from './doc-types';
 import { ExportDialog } from './export-dialog';
+import { ExportHistory } from './export-history';
 import { ExportStatusBanner } from './export-status-banner';
 import { applyReorder, countItemsNeedingReview } from './item-helpers';
 import { ItemList } from './item-list';
@@ -381,6 +382,7 @@ export function PackageEditor({
     <>
       <main className="mx-auto max-w-6xl px-6 py-8">
         <ExportStatusBanner pkg={pkg} />
+        <ExportHistory packageId={packageId} />
         <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
           <div className="text-sm">
             <span className="font-medium">

@@ -46,6 +46,7 @@ export function ExportStatusBanner({ pkg }: { pkg: PackageDetailResponse }) {
           {isExported ? 'Latest export ready' : 'Edited since last export'}
         </p>
         <p className="text-xs text-muted-foreground">
+          {latest.revision ? `${latest.revision} · ` : ''}
           {latest.page_count != null ? `${latest.page_count} pages · ` : ''}
           {formatBytes(latest.byte_size)} · rendered {formatRelativeTime(latest.created_at)}
           {isExported ? '' : ' · re-export to publish your edits'}

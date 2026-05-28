@@ -217,14 +217,6 @@ export function notFound() {
   return jsonError(404, 'not_found', 'Not found');
 }
 
-export function packageExportedError() {
-  return jsonError(
-    409,
-    'package_exported',
-    'Package is exported and cannot be modified. Create a new revision to make edits.',
-  );
-}
-
 export function exportJson(row: Export) {
   return {
     id: row.id,

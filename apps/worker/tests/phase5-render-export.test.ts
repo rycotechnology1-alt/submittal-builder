@@ -334,7 +334,12 @@ describe('Phase 5 render_export worker job', () => {
 
     type CapturedSource = {
       partNumber?: string | null;
-      selectedVariants?: { partNumber: string; label: string; sourcePage: number }[];
+      selectedVariants?: {
+        partNumber: string;
+        label: string;
+        sourcePage: number;
+        verificationStatus?: 'found' | 'absent' | 'unverifiable' | null;
+      }[];
     };
     const captured: CapturedSource[] = [];
     const fakeAssemble = async (input: { sources: CapturedSource[] }) => {
@@ -358,7 +363,7 @@ describe('Phase 5 render_export worker job', () => {
     // TOC shows the submitted part number, not the full model-number list.
     expect(source.partNumber).toBe('V06BAA1');
     expect(source.selectedVariants).toEqual([
-      { partNumber: 'V06BAA1', label: '1/2"', sourcePage: 1 },
+      { partNumber: 'V06BAA1', label: '1/2"', sourcePage: 1, verificationStatus: null },
     ]);
   });
 

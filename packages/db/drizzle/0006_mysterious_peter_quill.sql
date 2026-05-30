@@ -1,0 +1,1 @@
+ALTER TABLE "item_variants" ADD COLUMN "part_number_verification" text;

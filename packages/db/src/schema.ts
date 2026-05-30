@@ -356,6 +356,11 @@ export type ItemVariantSecondaryDims = {
   length?: string;
 };
 
+// Result of checking an extracted part number against its source page's text
+// layer: `absent` flags a likely mis-extraction for user review; `unverifiable`
+// means the page had no text layer (e.g. a scan) so it could not be checked.
+export type PartNumberVerification = 'found' | 'absent' | 'unverifiable';
+
 export const itemVariants = pgTable(
   'item_variants',
   {
@@ -370,6 +375,9 @@ export const itemVariants = pgTable(
     size: text('size').notNull(),
     secondaryDims: jsonb('secondary_dims').$type<ItemVariantSecondaryDims>(),
     displayLabel: text('display_label').notNull(),
+    // Result of checking this part number against the source page's text layer
+    // at extraction time; null until verified. See PartNumberVerification.
+    partNumberVerification: text('part_number_verification').$type<PartNumberVerification>(),
     sortOrder: integer('sort_order').notNull().default(0),
     // The smart-default variant within its size group — used to resolve the
     // secondary dimension when the user picks a size.

@@ -43,6 +43,13 @@
       "when": 1780158233360,
       "tag": "0005_burly_warpath",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780172619562,
+      "tag": "0006_mysterious_peter_quill",
+      "breakpoints": true
     }
   ]
 }

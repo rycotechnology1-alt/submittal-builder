@@ -20,7 +20,11 @@ import {
 import type { PDFPage } from 'pdf-lib';
 
 import { buildHeaderLines } from './cover-format.js';
-import { locatePartNumber, type PartNumberMatch } from './locate-part-number.js';
+import {
+  locatePartNumber,
+  type PartNumberMatch,
+  type VerificationStatus,
+} from './locate-part-number.js';
 
 const PAGE_W = 612; // US Letter, points
 const PAGE_H = 792;
@@ -60,6 +64,12 @@ export type SelectedVariantCallout = {
   label: string;
   /** 1-based page within this source PDF where the part number appears. */
   sourcePage: number;
+  /**
+   * Whether this part number was verified against the source page's text layer.
+   * `absent` means a likely mis-extraction — when it also cannot be located we
+   * suppress the fallback stamp rather than print a known-wrong number.
+   */
+  verificationStatus?: VerificationStatus | null;
 };
 
 export type CoverMetadata = {
@@ -617,7 +627,10 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
       }
       if (match) {
         drawPartNumberHighlight(page, match);
-      } else {
+      } else if (variant.verificationStatus !== 'absent') {
+        // Skip the stamp for a part number we know is missing from a text-bearing
+        // page (a likely mis-extraction the user was warned about); keep it for
+        // the genuine "scanned / no text layer" case.
         stampLines.push(`SUBMITTED — Part No. ${variant.partNumber} (${variant.label})`);
       }
     }

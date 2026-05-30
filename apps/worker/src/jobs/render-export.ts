@@ -176,7 +176,12 @@ export async function runRenderExportJob(deps: RenderExportDeps, data: RenderExp
     // Callouts keyed by the source PDF whose page carries the part number.
     const calloutsBySourcePdf = new Map<
       string,
-      { partNumber: string; label: string; sourcePage: number }[]
+      {
+        partNumber: string;
+        label: string;
+        sourcePage: number;
+        verificationStatus: (typeof selectedVariants)[number]['partNumberVerification'];
+      }[]
     >();
     for (const variant of selectedVariants) {
       const partList = selectedPartNumbersByItem.get(variant.itemId) ?? [];
@@ -192,6 +197,7 @@ export async function runRenderExportJob(deps: RenderExportDeps, data: RenderExp
         partNumber: variant.partNumber,
         label: variant.displayLabel,
         sourcePage: page?.pageNumber ?? 1,
+        verificationStatus: variant.partNumberVerification,
       });
       calloutsBySourcePdf.set(targetPdfId, list);
     }

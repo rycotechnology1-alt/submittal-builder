@@ -339,6 +339,53 @@ describe('assembleSubmittalPdf', () => {
     expect(sourceText).toContain('V06ZZZ9');
   });
 
+  it('suppresses the fallback stamp for an absent (mis-extracted) part number', async () => {
+    const source = await makePartNumberPdf('5335967');
+    const result = await assembleSubmittalPdf({
+      cover: baseCover,
+      sources: [
+        {
+          bytes: source,
+          title: 'Base Spacer',
+          itemId: 'item-1',
+          // Mis-extracted SKU (one digit off): not on a page that has text.
+          selectedVariants: [
+            { partNumber: '5335867', label: '4 x 2', sourcePage: 1, verificationStatus: 'absent' },
+          ],
+        },
+      ],
+    });
+
+    const parsed = await parsePdfPages(result.bytes);
+    const sourceText = parsed.pages[2]!.text ?? '';
+    // A known-wrong number is neither located nor stamped.
+    expect(sourceText).not.toContain('SUBMITTED');
+    expect(sourceText).not.toContain('5335867');
+  });
+
+  it('still stamps an unverifiable part number (scanned page, no text layer)', async () => {
+    const source = await makePartNumberPdf('5335967');
+    const result = await assembleSubmittalPdf({
+      cover: baseCover,
+      sources: [
+        {
+          bytes: source,
+          title: 'Base Spacer',
+          itemId: 'item-1',
+          selectedVariants: [
+            { partNumber: '5335867', label: '4 x 2', sourcePage: 1, verificationStatus: 'unverifiable' },
+          ],
+        },
+      ],
+    });
+
+    const parsed = await parsePdfPages(result.bytes);
+    const sourceText = parsed.pages[2]!.text ?? '';
+    // Could not verify ⇒ keep the stamp fallback.
+    expect(sourceText).toContain('SUBMITTED');
+    expect(sourceText).toContain('5335867');
+  });
+
   it('handles a zero-source export with cover + toc only', async () => {
     const result = await assembleSubmittalPdf({
       cover: {

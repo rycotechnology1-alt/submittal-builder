@@ -20,7 +20,7 @@ import {
 import type { PDFPage } from 'pdf-lib';
 
 import { buildHeaderLines } from './cover-format.js';
-import { locatePartNumber } from './locate-part-number.js';
+import { locatePartNumber, type PartNumberMatch } from './locate-part-number.js';
 
 const PAGE_W = 612; // US Letter, points
 const PAGE_H = 792;
@@ -192,63 +192,54 @@ function truncateText(text: string, font: EmbeddedFont, size: number, maxWidth: 
 // --- Selected part-number callouts ------------------------------------------
 
 const CALLOUT_ACCENT = rgb(0.85, 0.12, 0.12);
-const CALLOUT_FONT_SIZE = 8;
 
-/** Draw an arrow pointing at a located part number plus a labelled box. */
-function drawPartNumberCallout(
-  page: PDFPage,
-  font: EmbeddedFont,
-  match: { x: number; y: number; width: number; height: number; pageWidth: number },
-  label: string,
-): void {
-  const cy = match.y + match.height / 2;
-  const textW = font.widthOfTextAtSize(label, CALLOUT_FONT_SIZE);
-  const arrowLen = 40;
-  const boxPadX = 4;
-  const boxPadY = 3;
-  const boxW = textW + boxPadX * 2;
-  const boxH = CALLOUT_FONT_SIZE + boxPadY * 2;
+// Highlighter-style marking for a located part number. A translucent fill over
+// the exact text reads through (it covers no neighbouring table data) and needs
+// no margin space. The part number itself lives in the TOC "Part #" column, so
+// nothing is drawn as on-page text — no arrow, no box, no label.
+const HIGHLIGHT_FILL = rgb(1, 0.85, 0);
+const HIGHLIGHT_PAD = 1.5;
+const HIGHLIGHT_FILL_OPACITY = 0.35;
+const HIGHLIGHT_BORDER_OPACITY = 0.9;
+const HIGHLIGHT_BORDER_WIDTH = 0.6;
 
-  // Prefer placing the label to the right of the text; flip left if it would
-  // run off the page.
-  const rightTail = match.x + match.width + 4;
-  const placeRight = rightTail + arrowLen + boxW <= match.pageWidth - 4;
+export type HighlightRect = { x: number; y: number; width: number; height: number };
 
-  let tipX: number;
-  let tailX: number;
-  let boxX: number;
-  if (placeRight) {
-    tipX = match.x + match.width + 2;
-    tailX = tipX + arrowLen;
-    boxX = tailX;
-  } else {
-    tipX = Math.max(2, match.x - 2);
-    tailX = Math.max(2, tipX - arrowLen);
-    boxX = Math.max(2, tailX - boxW);
+/**
+ * Pad the located bbox and clamp it inside the page so the highlight never
+ * spills past an edge. Pure (no drawing) so it can be unit-tested directly.
+ */
+export function highlightRect(match: PartNumberMatch, pad: number): HighlightRect {
+  let x = match.x - pad;
+  let y = match.y - pad;
+  let width = match.width + pad * 2;
+  let height = match.height + pad * 2;
+  if (x < 0) {
+    width += x;
+    x = 0;
   }
+  if (y < 0) {
+    height += y;
+    y = 0;
+  }
+  if (x + width > match.pageWidth) width = match.pageWidth - x;
+  if (y + height > match.pageHeight) height = match.pageHeight - y;
+  return { x, y, width: Math.max(0, width), height: Math.max(0, height) };
+}
 
-  // Shaft.
-  page.drawLine({ start: { x: tailX, y: cy }, end: { x: tipX, y: cy }, thickness: 1.4, color: CALLOUT_ACCENT });
-  // Arrowhead (two short strokes toward the tip).
-  const dir = tipX >= tailX ? -1 : 1; // points back along the shaft
-  page.drawLine({ start: { x: tipX, y: cy }, end: { x: tipX + dir * 6, y: cy + 3 }, thickness: 1.4, color: CALLOUT_ACCENT });
-  page.drawLine({ start: { x: tipX, y: cy }, end: { x: tipX + dir * 6, y: cy - 3 }, thickness: 1.4, color: CALLOUT_ACCENT });
-  // Label box.
+/** Draw a translucent highlight over a located part number — no arrow, no label. */
+function drawPartNumberHighlight(page: PDFPage, match: PartNumberMatch): void {
+  const r = highlightRect(match, HIGHLIGHT_PAD);
   page.drawRectangle({
-    x: boxX,
-    y: cy - boxH / 2,
-    width: boxW,
-    height: boxH,
-    color: rgb(1, 1, 1),
-    borderColor: CALLOUT_ACCENT,
-    borderWidth: 0.8,
-  });
-  page.drawText(label, {
-    x: boxX + boxPadX,
-    y: cy - CALLOUT_FONT_SIZE / 2 + 0.5,
-    size: CALLOUT_FONT_SIZE,
-    font,
-    color: CALLOUT_ACCENT,
+    x: r.x,
+    y: r.y,
+    width: r.width,
+    height: r.height,
+    color: HIGHLIGHT_FILL,
+    opacity: HIGHLIGHT_FILL_OPACITY,
+    borderColor: HIGHLIGHT_FILL,
+    borderOpacity: HIGHLIGHT_BORDER_OPACITY,
+    borderWidth: HIGHLIGHT_BORDER_WIDTH,
   });
 }
 
@@ -625,7 +616,7 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
         match = null;
       }
       if (match) {
-        drawPartNumberCallout(page, font, match, `${variant.partNumber} · ${variant.label}`);
+        drawPartNumberHighlight(page, match);
       } else {
         stampLines.push(`SUBMITTED — Part No. ${variant.partNumber} (${variant.label})`);
       }

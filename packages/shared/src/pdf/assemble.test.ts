@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PDFDocument, PDFName, StandardFonts, degrees } from 'pdf-lib';
 
-import { assembleSubmittalPdf } from './assemble.js';
+import { assembleSubmittalPdf, highlightRect } from './assemble.js';
+import type { PartNumberMatch } from './locate-part-number.js';
 import { parsePdfPages } from './parse.js';
 
 async function makeFixturePdf(pages: number): Promise<Uint8Array> {
@@ -36,6 +37,42 @@ const baseCover = {
   revision: 'R0',
   packageTitle: null,
 };
+
+describe('highlightRect', () => {
+  const sample = (over: Partial<PartNumberMatch> = {}): PartNumberMatch => ({
+    x: 100,
+    y: 200,
+    width: 50,
+    height: 12,
+    pageWidth: 612,
+    pageHeight: 792,
+    ...over,
+  });
+
+  it('pads the located bbox on all sides', () => {
+    const r = highlightRect(sample(), 1.5);
+    expect(r.x).toBeCloseTo(98.5);
+    expect(r.y).toBeCloseTo(198.5);
+    expect(r.width).toBeCloseTo(53);
+    expect(r.height).toBeCloseTo(15);
+  });
+
+  it('clamps to the left and bottom edges without going negative', () => {
+    const r = highlightRect(sample({ x: 0.5, y: 0.5 }), 1.5);
+    expect(r.x).toBe(0);
+    expect(r.y).toBe(0);
+    expect(r.x + r.width).toBeLessThanOrEqual(612);
+    expect(r.y + r.height).toBeLessThanOrEqual(792);
+  });
+
+  it('clamps to the right and top edges within the page', () => {
+    const r = highlightRect(sample({ x: 600, y: 780 }), 1.5);
+    expect(r.x + r.width).toBeLessThanOrEqual(612);
+    expect(r.y + r.height).toBeLessThanOrEqual(792);
+    expect(r.width).toBeGreaterThan(0);
+    expect(r.height).toBeGreaterThan(0);
+  });
+});
 
 describe('assembleSubmittalPdf', () => {
   it('produces cover + TOC + merged sources with bookmarks and Bates labels', async () => {
@@ -237,7 +274,7 @@ describe('assembleSubmittalPdf', () => {
     expect(reopened.getPageCount()).toBe(3);
   });
 
-  it('draws an in-place callout when the selected part number is located', async () => {
+  it('highlights the located part number without drawing a label', async () => {
     const source = await makePartNumberPdf('V06BAA1');
     const result = await assembleSubmittalPdf({
       cover: baseCover,
@@ -254,12 +291,13 @@ describe('assembleSubmittalPdf', () => {
     // cover + toc + 1 source page = 3; the source page is index 2.
     const parsed = await parsePdfPages(result.bytes);
     const sourceText = parsed.pages[2]!.text ?? '';
-    // The callout label "V06BAA1 · 1/2"" adds the size next to the part number,
-    // which the bare source page never contained.
-    expect(sourceText).toContain('1/2');
+    // The highlight draws no on-page text — the part number lives only in the
+    // TOC; neither the size label nor a fallback stamp should appear.
+    expect(sourceText).not.toContain('SUBMITTED');
+    expect(sourceText).not.toContain('1/2');
   });
 
-  it('locates and calls out the part number even on a rotated page', async () => {
+  it('highlights the located part number even on a rotated page', async () => {
     const source = await makePartNumberPdf('V06BAA1', 90);
     const result = await assembleSubmittalPdf({
       cover: baseCover,
@@ -275,8 +313,8 @@ describe('assembleSubmittalPdf', () => {
 
     const parsed = await parsePdfPages(result.bytes);
     const sourceText = parsed.pages[2]!.text ?? '';
-    expect(sourceText).toContain('1/2');
-    // No fallback stamp should be drawn when the text was located.
+    // Highlight only — no label, no fallback stamp on a located (rotated) page.
+    expect(sourceText).not.toContain('1/2');
     expect(sourceText).not.toContain('SUBMITTED');
   });
 

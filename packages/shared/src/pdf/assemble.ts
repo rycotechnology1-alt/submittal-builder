@@ -19,6 +19,9 @@ import {
 } from 'pdf-lib';
 import type { PDFPage } from 'pdf-lib';
 
+import { buildHeaderLines } from './cover-format.js';
+import { locatePartNumber } from './locate-part-number.js';
+
 const PAGE_W = 612; // US Letter, points
 const PAGE_H = 792;
 const BATES_DIGITS = 6;
@@ -42,6 +45,21 @@ export type AssembleSourcePdf = {
   partNumber?: string | null;
   /** Manufacturer for the TOC row. */
   manufacturer?: string | null;
+  /**
+   * Selected size/part-number callouts to mark on this source's pages. Each is
+   * drawn as an arrow to the located part number, or a margin stamp when the
+   * text cannot be confidently located.
+   */
+  selectedVariants?: SelectedVariantCallout[];
+};
+
+export type SelectedVariantCallout = {
+  /** The exact part number to locate and call out, e.g. "V06BAA1". */
+  partNumber: string;
+  /** Human label for the callout, e.g. `1/2" – Coil`. */
+  label: string;
+  /** 1-based page within this source PDF where the part number appears. */
+  sourcePage: number;
 };
 
 export type CoverMetadata = {
@@ -55,7 +73,26 @@ export type CoverMetadata = {
   /** Optional cover logo as PNG or JPEG bytes. */
   logoBytes?: Uint8Array | null;
   logoContentType?: 'image/png' | 'image/jpeg' | null;
+  /** Optional company address + contact for the cover letterhead header. */
+  addressStreet?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressZip?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  contactWebsite?: string | null;
 };
+
+// --- Cover letterhead header layout -----------------------------------------
+
+const COVER_MARGIN = 72; // 1 inch
+const HEADER_TOP = PAGE_H - COVER_MARGIN; // top edge of logo + info block
+const LOGO_MAX_W = 160;
+const LOGO_MAX_H = 90;
+const LOGO_GAP = 18; // space between logo and the info column
+const HEADER_NAME_SIZE = 13;
+const HEADER_LINE_SIZE = 9.5;
+const HEADER_LINE_GAP = 13;
 
 export type AssembleInput = {
   cover: CoverMetadata;
@@ -152,6 +189,100 @@ function truncateText(text: string, font: EmbeddedFont, size: number, maxWidth: 
   return `${t}…`;
 }
 
+// --- Selected part-number callouts ------------------------------------------
+
+const CALLOUT_ACCENT = rgb(0.85, 0.12, 0.12);
+const CALLOUT_FONT_SIZE = 8;
+
+/** Draw an arrow pointing at a located part number plus a labelled box. */
+function drawPartNumberCallout(
+  page: PDFPage,
+  font: EmbeddedFont,
+  match: { x: number; y: number; width: number; height: number; pageWidth: number },
+  label: string,
+): void {
+  const cy = match.y + match.height / 2;
+  const textW = font.widthOfTextAtSize(label, CALLOUT_FONT_SIZE);
+  const arrowLen = 40;
+  const boxPadX = 4;
+  const boxPadY = 3;
+  const boxW = textW + boxPadX * 2;
+  const boxH = CALLOUT_FONT_SIZE + boxPadY * 2;
+
+  // Prefer placing the label to the right of the text; flip left if it would
+  // run off the page.
+  const rightTail = match.x + match.width + 4;
+  const placeRight = rightTail + arrowLen + boxW <= match.pageWidth - 4;
+
+  let tipX: number;
+  let tailX: number;
+  let boxX: number;
+  if (placeRight) {
+    tipX = match.x + match.width + 2;
+    tailX = tipX + arrowLen;
+    boxX = tailX;
+  } else {
+    tipX = Math.max(2, match.x - 2);
+    tailX = Math.max(2, tipX - arrowLen);
+    boxX = Math.max(2, tailX - boxW);
+  }
+
+  // Shaft.
+  page.drawLine({ start: { x: tailX, y: cy }, end: { x: tipX, y: cy }, thickness: 1.4, color: CALLOUT_ACCENT });
+  // Arrowhead (two short strokes toward the tip).
+  const dir = tipX >= tailX ? -1 : 1; // points back along the shaft
+  page.drawLine({ start: { x: tipX, y: cy }, end: { x: tipX + dir * 6, y: cy + 3 }, thickness: 1.4, color: CALLOUT_ACCENT });
+  page.drawLine({ start: { x: tipX, y: cy }, end: { x: tipX + dir * 6, y: cy - 3 }, thickness: 1.4, color: CALLOUT_ACCENT });
+  // Label box.
+  page.drawRectangle({
+    x: boxX,
+    y: cy - boxH / 2,
+    width: boxW,
+    height: boxH,
+    color: rgb(1, 1, 1),
+    borderColor: CALLOUT_ACCENT,
+    borderWidth: 0.8,
+  });
+  page.drawText(label, {
+    x: boxX + boxPadX,
+    y: cy - CALLOUT_FONT_SIZE / 2 + 0.5,
+    size: CALLOUT_FONT_SIZE,
+    font,
+    color: CALLOUT_ACCENT,
+  });
+}
+
+/** Fallback: a stamp banner at the top-left of the page listing part numbers. */
+function drawSubmittedStamp(page: PDFPage, font: EmbeddedFont, lines: string[]): void {
+  const size = 9;
+  const pad = 5;
+  const lineHeight = 13;
+  const { width, height } = page.getSize();
+  const textW = Math.max(...lines.map((l) => font.widthOfTextAtSize(l, size)));
+  const boxW = Math.min(width - 20, textW + pad * 2);
+  const boxH = pad * 2 + lines.length * lineHeight;
+  const x = 10;
+  const y = height - 10 - boxH;
+  page.drawRectangle({
+    x,
+    y,
+    width: boxW,
+    height: boxH,
+    color: rgb(1, 0.97, 0.85),
+    borderColor: CALLOUT_ACCENT,
+    borderWidth: 1,
+  });
+  lines.forEach((line, i) => {
+    page.drawText(line, {
+      x: x + pad,
+      y: y + boxH - pad - size - i * lineHeight,
+      size,
+      font,
+      color: CALLOUT_ACCENT,
+    });
+  });
+}
+
 async function loadSourceDoc(source: AssembleSourcePdf): Promise<{
   doc: PDFDocument;
   repaired: boolean;
@@ -176,43 +307,102 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
   // 1. Cover sheet (page 1). We add a placeholder; TOC will be inserted as
   //    page 2 once we know section starts.
   const cover = out.addPage([PAGE_W, PAGE_H]);
+
+  // --- Letterhead header: logo on the left, company name + address + contact
+  // stacked to the right. Only the cover page carries this block. The body
+  // below starts from the measured header bottom so a tall logo never collides
+  // with the title.
+  let logoBottom = HEADER_TOP;
+  let infoX = COVER_MARGIN;
   if (input.cover.logoBytes && input.cover.logoContentType) {
     try {
       const image =
         input.cover.logoContentType === 'image/png'
           ? await out.embedPng(input.cover.logoBytes)
           : await out.embedJpg(input.cover.logoBytes);
-      const targetWidth = 180;
-      const scale = targetWidth / image.width;
-      const targetHeight = image.height * scale;
+      // Fit within the logo box, preserving aspect ratio.
+      const scale = Math.min(LOGO_MAX_W / image.width, LOGO_MAX_H / image.height);
+      const drawnW = image.width * scale;
+      const drawnH = image.height * scale;
       cover.drawImage(image, {
-        x: 72,
-        y: PAGE_H - 72 - targetHeight,
-        width: targetWidth,
-        height: targetHeight,
+        x: COVER_MARGIN,
+        y: HEADER_TOP - drawnH,
+        width: drawnW,
+        height: drawnH,
       });
+      logoBottom = HEADER_TOP - drawnH;
+      infoX = COVER_MARGIN + drawnW + LOGO_GAP;
     } catch {
       // logo failures are non-fatal; continue without it.
     }
   }
+
+  const headerLines = buildHeaderLines({
+    companyName: input.cover.workspaceName,
+    addressStreet: input.cover.addressStreet,
+    addressCity: input.cover.addressCity,
+    addressState: input.cover.addressState,
+    addressZip: input.cover.addressZip,
+    contactPhone: input.cover.contactPhone,
+    contactEmail: input.cover.contactEmail,
+    contactWebsite: input.cover.contactWebsite,
+  });
+
+  // Company name (bold) then address/contact lines, top-aligned with the logo.
+  let textY = HEADER_TOP - HEADER_NAME_SIZE;
+  cover.drawText(headerLines[0] ?? input.cover.workspaceName, {
+    x: infoX,
+    y: textY,
+    size: HEADER_NAME_SIZE,
+    font: fontBold,
+    color: rgb(0.1, 0.1, 0.1),
+  });
+  for (let i = 1; i < headerLines.length; i++) {
+    textY -= HEADER_LINE_GAP;
+    cover.drawText(headerLines[i]!, {
+      x: infoX,
+      y: textY,
+      size: HEADER_LINE_SIZE,
+      font,
+      color: rgb(0.3, 0.3, 0.3),
+    });
+  }
+
+  // Divider under whichever column reaches lower (logo or text).
+  const headerBottom = Math.min(logoBottom, textY);
+  const dividerY = headerBottom - 16;
+  cover.drawLine({
+    start: { x: COVER_MARGIN, y: dividerY },
+    end: { x: PAGE_W - COVER_MARGIN, y: dividerY },
+    thickness: 0.75,
+    color: rgb(0.6, 0.6, 0.6),
+  });
+
+  const titleY = dividerY - 36;
   cover.drawText('SUBMITTAL PACKAGE', {
-    x: 72,
-    y: PAGE_H - 220,
+    x: COVER_MARGIN,
+    y: titleY,
     size: 26,
     font: fontBold,
     color: rgb(0.1, 0.1, 0.1),
   });
   cover.drawText(input.cover.packageTitle ?? input.cover.submittalNumber, {
-    x: 72,
-    y: PAGE_H - 252,
+    x: COVER_MARGIN,
+    y: titleY - 30,
     size: 14,
     font,
     color: rgb(0.3, 0.3, 0.3),
   });
 
-  let coverY = PAGE_H - 320;
+  let coverY = titleY - 78;
   const drawRow = (label: string, value: string) => {
-    cover.drawText(label, { x: 72, y: coverY, size: 11, font: fontBold, color: rgb(0.1, 0.1, 0.1) });
+    cover.drawText(label, {
+      x: COVER_MARGIN,
+      y: coverY,
+      size: 11,
+      font: fontBold,
+      color: rgb(0.1, 0.1, 0.1),
+    });
     cover.drawText(value, { x: 220, y: coverY, size: 11, font, color: rgb(0.2, 0.2, 0.2) });
     coverY -= 22;
   };
@@ -221,7 +411,6 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
   drawRow('Revision:', input.cover.revision);
   drawRow('Project:', input.cover.projectName);
   drawRow('Subcontractor:', input.cover.subCompanyName);
-  drawRow('Workspace:', input.cover.workspaceName);
   drawRow('Generated:', new Date().toISOString().slice(0, 10));
 
   // Approval stamp box.
@@ -246,10 +435,13 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
   type SectionStart = {
     title: string;
     pageIndexInOutput: number;
+    pageCount: number;
     itemId?: string;
     description?: string | null;
     partNumber?: string | null;
     manufacturer?: string | null;
+    sourceBytes: Uint8Array;
+    selectedVariants?: SelectedVariantCallout[];
   };
   const sectionStarts: SectionStart[] = [];
   const repairedSourceIndices: number[] = [];
@@ -263,10 +455,13 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
     sectionStarts.push({
       title: source.title,
       pageIndexInOutput: out.getPageCount(),
+      pageCount: copied.length,
       itemId: source.itemId,
       description: source.description,
       partNumber: source.partNumber,
       manufacturer: source.manufacturer,
+      sourceBytes: source.bytes,
+      selectedVariants: source.selectedVariants,
     });
     for (const page of copied) out.addPage(page);
   }
@@ -412,6 +607,32 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
       font,
       color: rgb(0.4, 0.4, 0.4),
     });
+  }
+
+  // 6b. Mark the user-selected part number(s) on each source's pages: an arrow
+  //     to the located text, or a margin stamp when it can't be located.
+  for (const s of sectionStarts) {
+    if (!s.selectedVariants?.length) continue;
+    const firstPageIndex = s.pageIndexInOutput + tocPageCount;
+    const stampLines: string[] = [];
+    for (const variant of s.selectedVariants) {
+      const pageOffset = Math.min(Math.max(variant.sourcePage - 1, 0), s.pageCount - 1);
+      const page = out.getPage(firstPageIndex + pageOffset);
+      let match = null;
+      try {
+        match = await locatePartNumber(s.sourceBytes, pageOffset + 1, variant.partNumber);
+      } catch {
+        match = null;
+      }
+      if (match) {
+        drawPartNumberCallout(page, font, match, `${variant.partNumber} · ${variant.label}`);
+      } else {
+        stampLines.push(`SUBMITTED — Part No. ${variant.partNumber} (${variant.label})`);
+      }
+    }
+    if (stampLines.length > 0) {
+      drawSubmittedStamp(out.getPage(firstPageIndex), font, stampLines);
+    }
   }
 
   // 7. PDF outline (bookmarks pane) — one entry per source.

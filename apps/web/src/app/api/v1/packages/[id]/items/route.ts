@@ -10,6 +10,7 @@ import {
   itemAttributeJson,
   itemJson,
   itemSourcePdfJson,
+  itemVariantJson,
   notFound,
 } from '@/server/phase2-records';
 
@@ -31,21 +32,33 @@ async function packageItemsResponse(workspaceId: string, packageId: string) {
   if (items.length === 0) return [];
   const itemIds = items.map((item) => item.id);
 
-  const [attributes, sourcePdfs] = await Promise.all([
+  const [attributes, sourcePdfs, variants] = await Promise.all([
     db
       .select()
       .from(schema.itemAttributes)
       .where(inArray(schema.itemAttributes.itemId, itemIds)),
     db.select().from(schema.sourcePdfs).where(inArray(schema.sourcePdfs.itemId, itemIds)),
+    db
+      .select()
+      .from(schema.itemVariants)
+      .where(inArray(schema.itemVariants.itemId, itemIds))
+      .orderBy(asc(schema.itemVariants.sortOrder)),
   ]);
 
-  return items.map((item) => ({
-    item: itemJson(item),
-    attributes: attributes
-      .filter((attribute) => attribute.itemId === item.id)
-      .map(itemAttributeJson),
-    source_pdfs: sourcePdfs.filter((pdf) => pdf.itemId === item.id).map(itemSourcePdfJson),
-  }));
+  return items.map((item) => {
+    const itemVariants = variants.filter((variant) => variant.itemId === item.id);
+    return {
+      item: itemJson(item),
+      attributes: attributes
+        .filter((attribute) => attribute.itemId === item.id)
+        .map(itemAttributeJson),
+      source_pdfs: sourcePdfs.filter((pdf) => pdf.itemId === item.id).map(itemSourcePdfJson),
+      variants: itemVariants.map(itemVariantJson),
+      selected_part_numbers: itemVariants
+        .filter((variant) => variant.selectedAt !== null)
+        .map((variant) => variant.partNumber),
+    };
+  });
 }
 
 export async function GET(req: Request, context: RouteContext<{ id: string }>) {

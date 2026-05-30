@@ -440,6 +440,12 @@ describe('Phase 3 file handling', () => {
       }),
     );
     expect(confirm.status).toBe(200);
+    // The confirm response itself must carry the presigned logo URL so the
+    // client cache shows the logo immediately (regression: it returned null).
+    const confirmBody = (await confirm.json()) as { sub_company_logo_url: string };
+    expect(confirmBody.sub_company_logo_url).toBe(
+      `https://storage.test/get/${presignBody.storage_key}?ttl=300`,
+    );
 
     const workspace = await routes.workspaceGET(authedReq('/api/v1/workspace', user.cookie));
     expect(workspace.status).toBe(200);

@@ -21,6 +21,7 @@ import {
   boolean,
   doublePrecision,
   date,
+  jsonb,
   uniqueIndex,
   index,
 } from 'drizzle-orm/pg-core';
@@ -77,6 +78,15 @@ export const workspaces = pgTable('workspaces', {
   name: text('name').notNull(),
   subCompanyName: text('sub_company_name').notNull(),
   subCompanyLogoStorageKey: text('sub_company_logo_storage_key'),
+  // Optional company address + contact info — printed on the export cover page
+  // letterhead header. All nullable so a workspace can leave any of them blank.
+  addressStreet: text('address_street'),
+  addressCity: text('address_city'),
+  addressState: text('address_state'),
+  addressZip: text('address_zip'),
+  contactPhone: text('contact_phone'),
+  contactEmail: text('contact_email'),
+  contactWebsite: text('contact_website'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -330,6 +340,51 @@ export const itemAttributes = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Item variants (size / type → part number)
+// ---------------------------------------------------------------------------
+//
+// A single spec sheet usually lists one product across many trade sizes, each
+// with its own cryptic part number (e.g. Enviro-Flex 1/2" = V06BAA1). The AI
+// extracts that table into one row per distinct part number. The submitter
+// picks the human-readable `size`(s); `selectedAt` marks which part numbers are
+// actually being submitted. An item with zero variant rows behaves exactly like
+// a single-product sheet (no size step).
+
+export type ItemVariantSecondaryDims = {
+  type?: string;
+  packaging?: string;
+  length?: string;
+};
+
+export const itemVariants = pgTable(
+  'item_variants',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => items.id, { onDelete: 'cascade' }),
+    sourcePageId: uuid('source_page_id').references(() => sourcePages.id, {
+      onDelete: 'set null',
+    }),
+    partNumber: text('part_number').notNull(),
+    size: text('size').notNull(),
+    secondaryDims: jsonb('secondary_dims').$type<ItemVariantSecondaryDims>(),
+    displayLabel: text('display_label').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    // The smart-default variant within its size group — used to resolve the
+    // secondary dimension when the user picks a size.
+    isDefaultForSize: boolean('is_default_for_size').notNull().default(false),
+    // Non-null ⇒ the user is submitting this part number.
+    selectedAt: timestamp('selected_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    itemSortIdx: index('item_variants_item_sort_idx').on(t.itemId, t.sortOrder),
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // Exports + processing_jobs
 // ---------------------------------------------------------------------------
 
@@ -394,5 +449,7 @@ export type SourcePdf = typeof sourcePdfs.$inferSelect;
 export type SourcePage = typeof sourcePages.$inferSelect;
 export type Item = typeof items.$inferSelect;
 export type ItemAttribute = typeof itemAttributes.$inferSelect;
+export type ItemVariant = typeof itemVariants.$inferSelect;
+export type NewItemVariant = typeof itemVariants.$inferInsert;
 export type Export = typeof exports.$inferSelect;
 export type ProcessingJob = typeof processingJobs.$inferSelect;

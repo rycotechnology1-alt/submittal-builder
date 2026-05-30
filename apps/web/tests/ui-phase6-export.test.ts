@@ -33,6 +33,8 @@ const baseItem = (overrides: Partial<PackageItemResponse> = {}): PackageItemResp
   source_pdfs: overrides.source_pdfs ?? [
     { id: 'pdf-1', original_filename: 'a.pdf', page_count: 10 },
   ],
+  variants: overrides.variants ?? [],
+  selected_part_numbers: overrides.selected_part_numbers ?? [],
 });
 
 describe('computeExportBlockers', () => {

@@ -26,12 +26,29 @@ const extractedFieldSchema = z.object({
   source_page: z.number().int().min(1),
 });
 
+const extractedVariantSchema = z.object({
+  part_number: z.string().min(1),
+  size: z.string().min(1),
+  secondary_dims: z
+    .object({
+      type: z.string().optional(),
+      packaging: z.string().optional(),
+      length: z.string().optional(),
+    })
+    .nullish(),
+  source_page: z.number().int().min(1),
+});
+
 export const extractResultSchema = z.object({
   manufacturer: extractedFieldSchema,
   model_number: extractedFieldSchema,
   description: extractedFieldSchema,
   spec_section_ref: extractedFieldSchema,
+  // Older prompt responses (or single-product sheets) may omit variants.
+  variants: z.array(extractedVariantSchema).default([]),
 });
+
+export type ExtractedVariant = z.infer<typeof extractedVariantSchema>;
 
 export type ClassifyResult = z.infer<typeof classifyResultSchema>;
 export type ExtractResult = z.infer<typeof extractResultSchema>;
@@ -120,7 +137,7 @@ export function createAnthropicAiClient(config: AnthropicAiConfig): AnthropicAiC
         () =>
           client.messages.create({
           model: config.extractModel ?? DEFAULT_MODEL,
-          max_tokens: 1024,
+          max_tokens: 4096,
           stream: false,
           system: [
             {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { PDFDocument, PDFName } from 'pdf-lib';
+import { PDFDocument, PDFName, StandardFonts, degrees } from 'pdf-lib';
 
 import { assembleSubmittalPdf } from './assemble.js';
+import { parsePdfPages } from './parse.js';
 
 async function makeFixturePdf(pages: number): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -11,6 +12,30 @@ async function makeFixturePdf(pages: number): Promise<Uint8Array> {
   }
   return doc.save();
 }
+
+const FILLER =
+  'Liquidtight Enviro-Flex Conduit specification sheet sample content used to clear the OCR text threshold during tests.';
+
+/** A one-page PDF containing the given part number plus filler text. */
+async function makePartNumberPdf(partNumber: string, rotation = 0): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([612, 792]);
+  if (rotation) page.setRotation(degrees(rotation));
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText(FILLER, { x: 40, y: 720, size: 9, font });
+  page.drawText(partNumber, { x: 220, y: 500, size: 12, font });
+  return doc.save();
+}
+
+const baseCover = {
+  workspaceName: 'Acme',
+  subCompanyName: 'Acme',
+  projectName: 'Test',
+  submittalNumber: '26 05 00',
+  specSection: '26 05 00',
+  revision: 'R0',
+  packageTitle: null,
+};
 
 describe('assembleSubmittalPdf', () => {
   it('produces cover + TOC + merged sources with bookmarks and Bates labels', async () => {
@@ -171,6 +196,109 @@ describe('assembleSubmittalPdf', () => {
     });
     // The last item must land on the final page of the document.
     expect(result.bookmarks[count - 1]!.pageNumber).toBe(result.pageCount);
+  });
+
+  it('renders the cover letterhead header with a logo + full address/contact', async () => {
+    // 1x1 PNG — exercises the embed path + dynamic header layout. The fit logic
+    // scales it into the logo box, pushing the body below the header.
+    const logoBytes = Uint8Array.from(
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    );
+    const source = await makeFixturePdf(1);
+
+    const result = await assembleSubmittalPdf({
+      cover: {
+        workspaceName: 'Acme Submittals',
+        subCompanyName: 'Acme HVAC',
+        projectName: 'Test Tower',
+        submittalNumber: '23 81 00-001',
+        specSection: '23 81 00',
+        revision: 'R0',
+        packageTitle: 'Test Package',
+        logoBytes,
+        logoContentType: 'image/png',
+        addressStreet: '123 Main St',
+        addressCity: 'Austin',
+        addressState: 'TX',
+        addressZip: '78701',
+        contactPhone: '512-555-0100',
+        contactEmail: 'hi@acme.com',
+        contactWebsite: 'acme.com',
+      },
+      sources: [{ bytes: source, title: 'Only Source' }],
+    });
+
+    // cover (1) + toc (1) + 1 source = 3; header rendering must not throw.
+    expect(result.pageCount).toBe(3);
+    const reopened = await PDFDocument.load(result.bytes);
+    expect(reopened.getPageCount()).toBe(3);
+  });
+
+  it('draws an in-place callout when the selected part number is located', async () => {
+    const source = await makePartNumberPdf('V06BAA1');
+    const result = await assembleSubmittalPdf({
+      cover: baseCover,
+      sources: [
+        {
+          bytes: source,
+          title: 'Enviro-Flex',
+          itemId: 'item-1',
+          selectedVariants: [{ partNumber: 'V06BAA1', label: '1/2"', sourcePage: 1 }],
+        },
+      ],
+    });
+
+    // cover + toc + 1 source page = 3; the source page is index 2.
+    const parsed = await parsePdfPages(result.bytes);
+    const sourceText = parsed.pages[2]!.text ?? '';
+    // The callout label "V06BAA1 · 1/2"" adds the size next to the part number,
+    // which the bare source page never contained.
+    expect(sourceText).toContain('1/2');
+  });
+
+  it('locates and calls out the part number even on a rotated page', async () => {
+    const source = await makePartNumberPdf('V06BAA1', 90);
+    const result = await assembleSubmittalPdf({
+      cover: baseCover,
+      sources: [
+        {
+          bytes: source,
+          title: 'Enviro-Flex',
+          itemId: 'item-1',
+          selectedVariants: [{ partNumber: 'V06BAA1', label: '1/2"', sourcePage: 1 }],
+        },
+      ],
+    });
+
+    const parsed = await parsePdfPages(result.bytes);
+    const sourceText = parsed.pages[2]!.text ?? '';
+    expect(sourceText).toContain('1/2');
+    // No fallback stamp should be drawn when the text was located.
+    expect(sourceText).not.toContain('SUBMITTED');
+  });
+
+  it('stamps a fallback banner when the part number cannot be located', async () => {
+    const source = await makePartNumberPdf('V06BAA1');
+    const result = await assembleSubmittalPdf({
+      cover: baseCover,
+      sources: [
+        {
+          bytes: source,
+          title: 'Enviro-Flex',
+          itemId: 'item-1',
+          // This part number is absent from the page ⇒ fallback stamp.
+          selectedVariants: [{ partNumber: 'V06ZZZ9', label: '2" – Coil', sourcePage: 1 }],
+        },
+      ],
+    });
+
+    const parsed = await parsePdfPages(result.bytes);
+    const sourceText = parsed.pages[2]!.text ?? '';
+    expect(sourceText).toContain('SUBMITTED');
+    expect(sourceText).toContain('V06ZZZ9');
   });
 
   it('handles a zero-source export with cover + toc only', async () => {

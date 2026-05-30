@@ -13,9 +13,9 @@ export default function WorkspaceSettingsPage() {
         <ChevronLeft className="h-3 w-3" />
         Back to projects
       </Link>
-      <h1 className="text-2xl font-semibold tracking-tight">Workspace settings</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Organizational settings</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Defaults that appear on every package&apos;s cover sheet.
+        Company details that appear on every package&apos;s cover sheet.
       </p>
       <div className="mt-8">
         <WorkspaceSettingsForm />

@@ -13,9 +13,10 @@ import type { PackageDetailResponse, ProjectDetailResponse } from '@submittal/sh
 import { PackageHeader } from './_components/package-header';
 import { PackageEditor } from './_components/editor/package-editor';
 import { PackageDangerZone } from './_components/package-danger-zone';
+import { SizeSelectionStep } from './_components/sizes/size-selection-step';
 import { UploadProcessingPanel } from './_components/upload-processing-panel';
 
-type PackageView = 'upload' | 'assemble';
+type PackageView = 'upload' | 'sizes' | 'assemble';
 
 export default function PackageDetailPage() {
   const params = useParams<{ id: string }>();
@@ -77,6 +78,8 @@ export default function PackageDetailPage() {
           packageStatus={pkg.status}
           sourcePdfCount={pkg.source_pdf_count}
         />
+      ) : view === 'sizes' ? (
+        <SizeSelectionStep packageId={pkg.id} />
       ) : (
         <PackageEditor pkg={pkg} project={project} />
       )}
@@ -94,6 +97,7 @@ function resolveView(
   pkg: PackageDetailResponse,
 ): PackageView {
   if (viewParam === 'upload') return 'upload';
+  if (viewParam === 'sizes') return 'sizes';
   if (viewParam === 'assemble') return 'assemble';
   if (pkg.status === 'draft' || pkg.status === 'processing' || pkg.source_pdf_count === 0) {
     return 'upload';

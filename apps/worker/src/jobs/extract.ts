@@ -4,6 +4,7 @@ import type { Db, SourcePdf } from '@submittal/db';
 import { schema } from '@submittal/db';
 import type { AppStorage } from '@submittal/shared/storage';
 import { renderPdfPageToWebp } from '@submittal/shared/pdf';
+import { deriveVariantRows, type ExtractedVariant } from '@submittal/shared/ai';
 
 import {
   markJobFailed,
@@ -23,7 +24,9 @@ type ExtractedField = {
   source_page: number;
 };
 
-type ExtractResult = Record<AttributeKey, ExtractedField>;
+type ExtractResult = Record<AttributeKey, ExtractedField> & {
+  variants?: ExtractedVariant[];
+};
 
 type ExtractAi = {
   extractAttributes(input: { images: Uint8Array[]; sourcePdf: SourcePdf }): Promise<ExtractResult>;
@@ -87,6 +90,32 @@ async function upsertAttribute(input: {
   });
 }
 
+async function replaceVariants(input: {
+  db: Db;
+  itemId: string;
+  variants: ExtractedVariant[];
+  sourcePageByNumber: Map<number, string>;
+}) {
+  // Re-extraction is authoritative: clear and rewrite the item's variant table.
+  await input.db.delete(schema.itemVariants).where(eq(schema.itemVariants.itemId, input.itemId));
+
+  const rows = deriveVariantRows(input.variants);
+  if (rows.length === 0) return;
+
+  await input.db.insert(schema.itemVariants).values(
+    rows.map((row) => ({
+      itemId: input.itemId,
+      sourcePageId: input.sourcePageByNumber.get(row.sourcePage) ?? null,
+      partNumber: row.partNumber,
+      size: row.size,
+      secondaryDims: row.secondaryDims ?? null,
+      displayLabel: row.displayLabel,
+      sortOrder: row.sortOrder,
+      isDefaultForSize: row.isDefaultForSize,
+    })),
+  );
+}
+
 export async function runExtractJob(deps: ExtractDeps, data: SourcePdfJobData) {
   await markJobRunning(deps.db, data, 'extract', data.sourcePdfId);
 
@@ -121,6 +150,13 @@ export async function runExtractJob(deps: ExtractDeps, data: SourcePdfJobData) {
         sourcePageId: sourcePageByNumber.get(field.source_page) ?? null,
       });
     }
+
+    await replaceVariants({
+      db: deps.db,
+      itemId: sourcePdf.itemId,
+      variants: extracted.variants ?? [],
+      sourcePageByNumber,
+    });
 
     await deps.db
       .update(schema.sourcePdfs)

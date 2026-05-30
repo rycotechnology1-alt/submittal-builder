@@ -7,6 +7,7 @@ import type {
   Workspace,
   Item,
   ItemAttribute,
+  ItemVariant,
   SourcePdf,
   SourcePage,
 } from '@submittal/db';
@@ -19,6 +20,13 @@ export function workspaceJson(row: Workspace, logoUrl: string | null = null) {
     name: row.name,
     sub_company_name: row.subCompanyName,
     sub_company_logo_url: logoUrl,
+    address_street: row.addressStreet ?? null,
+    address_city: row.addressCity ?? null,
+    address_state: row.addressState ?? null,
+    address_zip: row.addressZip ?? null,
+    contact_phone: row.contactPhone ?? null,
+    contact_email: row.contactEmail ?? null,
+    contact_website: row.contactWebsite ?? null,
     created_at: iso(row.createdAt),
     updated_at: iso(row.updatedAt),
   };
@@ -83,6 +91,20 @@ export function itemAttributeJson(row: ItemAttribute) {
     confidence: row.confidence,
     source_page_id: row.sourcePageId,
     edited_by_user_at: iso(row.editedByUserAt),
+  };
+}
+
+export function itemVariantJson(row: ItemVariant) {
+  return {
+    id: row.id,
+    part_number: row.partNumber,
+    size: row.size,
+    secondary_dims: row.secondaryDims ?? null,
+    display_label: row.displayLabel,
+    sort_order: row.sortOrder,
+    is_default_for_size: row.isDefaultForSize,
+    selected: row.selectedAt !== null,
+    source_page_id: row.sourcePageId,
   };
 }
 

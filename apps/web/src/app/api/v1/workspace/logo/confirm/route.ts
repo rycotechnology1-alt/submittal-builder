@@ -4,7 +4,7 @@ import { logoConfirmRequestSchema } from '@submittal/shared/api';
 
 import { jsonError, parseJson } from '@/server/api';
 import { db, schema } from '@/server/db';
-import { isWorkspaceStorageKey } from '@/server/file-records';
+import { DOWNLOAD_URL_TTL_SECONDS, isWorkspaceStorageKey } from '@/server/file-records';
 import { workspaceJson } from '@/server/phase2-records';
 import { getStorage } from '@/server/storage';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
@@ -30,7 +30,13 @@ export async function POST(req: Request) {
       .where(eq(schema.workspaces.id, ctx.workspaceId))
       .returning();
 
-    return workspaceJson(workspace!);
+    // Return the presigned logo URL so the client cache reflects the new logo
+    // immediately (matches the GET route's behavior).
+    const logoUrl = await getStorage().presignGetUrl({
+      key: body.storage_key,
+      expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
+    });
+    return workspaceJson(workspace!, logoUrl);
   });
 
   if (result instanceof Response) return result;

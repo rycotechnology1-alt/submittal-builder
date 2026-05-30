@@ -177,6 +177,63 @@ describe('Phase 2 workspace/project/package/item CRUD', () => {
     expect(body.sub_company_name).toBe('Updated Sub');
   });
 
+  it('sets, reads back, and clears workspace address/contact fields', async () => {
+    const user = await createAuthedUser('workspace-details');
+    emails.push(user.email);
+
+    type DetailsBody = {
+      address_street: string | null;
+      address_city: string | null;
+      address_state: string | null;
+      address_zip: string | null;
+      contact_phone: string | null;
+      contact_email: string | null;
+      contact_website: string | null;
+    };
+
+    // New workspace starts with all detail fields null.
+    const initial = await workspaceGET(authedReq('/api/v1/workspace', user.cookie));
+    const initialBody = (await initial.json()) as DetailsBody;
+    expect(initialBody.address_street).toBeNull();
+    expect(initialBody.contact_email).toBeNull();
+
+    // Set a mix of fields; leave one contact field blank.
+    const set = await workspacePATCH(
+      jsonReq(
+        '/api/v1/workspace',
+        user.cookie,
+        {
+          address_street: '123 Main St',
+          address_city: 'Austin',
+          address_state: 'TX',
+          address_zip: '78701',
+          contact_phone: '512-555-0100',
+          contact_email: 'hi@acme.com',
+        },
+        'PATCH',
+      ),
+    );
+    expect(set.status).toBe(200);
+    const setBody = (await set.json()) as DetailsBody;
+    expect(setBody.address_street).toBe('123 Main St');
+    expect(setBody.address_city).toBe('Austin');
+    expect(setBody.address_zip).toBe('78701');
+    expect(setBody.contact_phone).toBe('512-555-0100');
+    expect(setBody.contact_website).toBeNull();
+
+    // Empty/whitespace clears a field back to null.
+    const cleared = await workspacePATCH(
+      jsonReq('/api/v1/workspace', user.cookie, { address_city: '', contact_phone: '  ' }, 'PATCH'),
+    );
+    expect(cleared.status).toBe(200);
+    const clearedBody = (await cleared.json()) as DetailsBody;
+    expect(clearedBody.address_city).toBeNull();
+    expect(clearedBody.contact_phone).toBeNull();
+    // Untouched fields are preserved.
+    expect(clearedBody.address_street).toBe('123 Main St');
+    expect(clearedBody.contact_email).toBe('hi@acme.com');
+  });
+
   it('validates project payloads and invalid UUID path params', async () => {
     const user = await createAuthedUser('validation');
     emails.push(user.email);

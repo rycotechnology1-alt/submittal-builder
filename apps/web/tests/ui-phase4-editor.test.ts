@@ -41,6 +41,8 @@ function item(
     },
     attributes,
     source_pdfs: [],
+    variants: [],
+    selected_part_numbers: [],
   };
 }
 

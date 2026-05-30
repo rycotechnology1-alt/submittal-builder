@@ -290,7 +290,9 @@ export function UploadProcessingPanel({
     proceedableRows.every((row) => row.processingStatus === 'extracted');
 
   function proceedToPackage() {
-    router.push(`${pathname}?view=assemble`);
+    // Route through the size-selection step; it forwards to the editor when no
+    // multi-variant documents need a size chosen.
+    router.push(`${pathname}?view=sizes`);
   }
 
   return (

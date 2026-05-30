@@ -6,6 +6,7 @@ import {
   buildWorkspacePatch,
   hasWorkspaceChanged,
   isEmptyWorkspaceField,
+  isOptionalWorkspaceField,
   isValidLogoContentType,
   isWithinLogoSizeLimit,
   normalizeWorkspaceFieldValue,
@@ -67,6 +68,27 @@ describe('buildWorkspacePatch', () => {
     expect(buildWorkspacePatch('sub_company_name', 'Acme Co')).toEqual({
       sub_company_name: 'Acme Co',
     });
+  });
+
+  test('trims a non-empty optional field', () => {
+    expect(buildWorkspacePatch('address_city', '  Austin  ')).toEqual({ address_city: 'Austin' });
+  });
+
+  test('clears an optional field to null when blank', () => {
+    expect(buildWorkspacePatch('contact_phone', '   ')).toEqual({ contact_phone: null });
+    expect(buildWorkspacePatch('address_zip', '')).toEqual({ address_zip: null });
+  });
+});
+
+describe('isOptionalWorkspaceField', () => {
+  test('required identity fields are not optional', () => {
+    expect(isOptionalWorkspaceField('name')).toBe(false);
+    expect(isOptionalWorkspaceField('sub_company_name')).toBe(false);
+  });
+
+  test('address and contact fields are optional', () => {
+    expect(isOptionalWorkspaceField('address_street')).toBe(true);
+    expect(isOptionalWorkspaceField('contact_email')).toBe(true);
   });
 });
 

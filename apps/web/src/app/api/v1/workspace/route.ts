@@ -33,12 +33,26 @@ export async function PATCH(req: Request) {
   const body = await parseJson(req, updateWorkspaceRequestSchema);
   if (body instanceof Response) return body;
 
+  // Optional fields normalize '' (after the schema's trim) to null so a blank
+  // input clears the column.
+  const orNull = (value: string | null | undefined): string | null =>
+    value ? value : null;
+
   const result = await withWorkspaceFromHeaders(req.headers, async (ctx) => {
     const [workspace] = await db
       .update(schema.workspaces)
       .set({
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.sub_company_name !== undefined ? { subCompanyName: body.sub_company_name } : {}),
+        ...(body.address_street !== undefined ? { addressStreet: orNull(body.address_street) } : {}),
+        ...(body.address_city !== undefined ? { addressCity: orNull(body.address_city) } : {}),
+        ...(body.address_state !== undefined ? { addressState: orNull(body.address_state) } : {}),
+        ...(body.address_zip !== undefined ? { addressZip: orNull(body.address_zip) } : {}),
+        ...(body.contact_phone !== undefined ? { contactPhone: orNull(body.contact_phone) } : {}),
+        ...(body.contact_email !== undefined ? { contactEmail: orNull(body.contact_email) } : {}),
+        ...(body.contact_website !== undefined
+          ? { contactWebsite: orNull(body.contact_website) }
+          : {}),
         updatedAt: new Date(),
       })
       .where(eq(schema.workspaces.id, ctx.workspaceId))

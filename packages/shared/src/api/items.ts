@@ -46,10 +46,31 @@ export const itemSourcePdfSchema = z.object({
   page_count: z.number().int().nullable(),
 });
 
+export const itemVariantSecondaryDimsSchema = z.object({
+  type: z.string().optional(),
+  packaging: z.string().optional(),
+  length: z.string().optional(),
+});
+
+export const itemVariantSchema = z.object({
+  id: uuidSchema,
+  part_number: z.string(),
+  size: z.string(),
+  secondary_dims: itemVariantSecondaryDimsSchema.nullable(),
+  display_label: z.string(),
+  sort_order: z.number().int(),
+  is_default_for_size: z.boolean(),
+  selected: z.boolean(),
+  source_page_id: uuidSchema.nullable(),
+});
+
 export const packageItemResponseSchema = z.object({
   item: itemSchema,
   attributes: z.array(itemAttributeSchema),
   source_pdfs: z.array(itemSourcePdfSchema),
+  variants: z.array(itemVariantSchema),
+  // Convenience: part numbers of the currently-selected variants, in sort order.
+  selected_part_numbers: z.array(z.string()),
 });
 
 export const createItemRequestSchema = z
@@ -105,6 +126,16 @@ export const reassignSourcePdfRequestSchema = z
   })
   .strict();
 
+// The selected variant ids for an item; the server marks these submitted and
+// clears every other variant of the item. An empty array clears the selection.
+export const variantSelectionRequestSchema = z
+  .object({
+    variant_ids: z.array(uuidSchema),
+  })
+  .strict();
+
+export type ItemVariantResponse = z.infer<typeof itemVariantSchema>;
+export type VariantSelectionRequest = z.infer<typeof variantSelectionRequestSchema>;
 export type PackageItemResponse = z.infer<typeof packageItemResponseSchema>;
 export type CreateItemRequest = z.infer<typeof createItemRequestSchema>;
 export type UpdateItemRequest = z.infer<typeof updateItemRequestSchema>;

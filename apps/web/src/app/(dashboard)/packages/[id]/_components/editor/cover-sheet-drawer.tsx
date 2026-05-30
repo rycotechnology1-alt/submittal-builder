@@ -162,13 +162,13 @@ export function CoverSheetDrawer({
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Workspace defaults
+              Organization defaults
             </h3>
             <Link
               href="/settings/workspace"
               className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
             >
-              Change in workspace settings
+              Change in organizational settings
               <ArrowUpRight className="h-3 w-3" />
             </Link>
           </div>

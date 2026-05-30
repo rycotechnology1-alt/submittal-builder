@@ -1,6 +1,7 @@
 'use client';
 
-import { ChevronDown, LogOut } from 'lucide-react';
+import { ChevronDown, LogOut, Settings } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import {
@@ -47,6 +48,13 @@ export function UserMenu({ name, email }: { name: string; email: string }) {
             <span className="text-xs font-normal text-muted-foreground">{email}</span>
           </div>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/settings/workspace">
+            <Settings className="mr-2 h-4 w-4" />
+            Organizational settings
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={handleSignOut}>
           <LogOut className="mr-2 h-4 w-4" />

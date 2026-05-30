@@ -257,6 +257,111 @@ describe('Phase 5 render_export worker job', () => {
     expect(source.manufacturer).toBe('Allied Tube');
   });
 
+  it('overrides the TOC part number with selected variants and forwards callouts', async () => {
+    const { workspace, creator, pkg } = await seedReadyPackage('variants');
+    workspaceIds.push(workspace.id);
+
+    const [item] = await db
+      .insert(schema.items)
+      .values({
+        workspaceId: workspace.id,
+        packageId: pkg.id,
+        docType: 'product_data',
+        title: 'Enviro-Flex Conduit',
+        sortOrder: 0,
+      })
+      .returning();
+    await db.insert(schema.itemAttributes).values([
+      { itemId: item!.id, key: 'model_number', currentValue: 'Enviro-Flex (V06ADA1, V06BAA1, V06CAN1)' },
+      { itemId: item!.id, key: 'manufacturer', currentValue: 'CANTEX' },
+    ]);
+
+    const pdfBytes = await makeFixturePdf(2);
+    const [sourcePdf] = await db
+      .insert(schema.sourcePdfs)
+      .values({
+        workspaceId: workspace.id,
+        packageId: pkg.id,
+        storageKey: `workspaces/${workspace.id}/source_pdfs/enviro.pdf`,
+        originalFilename: 'enviro.pdf',
+        byteSize: pdfBytes.byteLength,
+        sha256: 'cafed00d',
+        pageCount: 2,
+        processingStatus: 'extracted',
+        itemId: item!.id,
+      })
+      .returning();
+    const [page1] = await db
+      .insert(schema.sourcePages)
+      .values({ sourcePdfId: sourcePdf!.id, pageNumber: 1 })
+      .returning();
+
+    // Two sizes; only 1/2" (V06BAA1) is selected.
+    await db.insert(schema.itemVariants).values([
+      {
+        itemId: item!.id,
+        sourcePageId: page1!.id,
+        partNumber: 'V06ADA1',
+        size: '3/8"',
+        displayLabel: '3/8"',
+        sortOrder: 0,
+        isDefaultForSize: true,
+      },
+      {
+        itemId: item!.id,
+        sourcePageId: page1!.id,
+        partNumber: 'V06BAA1',
+        size: '1/2"',
+        displayLabel: '1/2"',
+        sortOrder: 1,
+        isDefaultForSize: true,
+        selectedAt: new Date(),
+      },
+    ]);
+
+    const [exportRow] = await db
+      .insert(schema.exports)
+      .values({
+        packageId: pkg.id,
+        createdByUserId: creator.id,
+        storageKey: `workspaces/${workspace.id}/exports/${item!.id}.pdf`,
+        status: 'pending',
+      })
+      .returning();
+
+    const storage = new FakeStorage();
+    storage.objects.set(sourcePdf!.storageKey, pdfBytes);
+
+    type CapturedSource = {
+      partNumber?: string | null;
+      selectedVariants?: { partNumber: string; label: string; sourcePage: number }[];
+    };
+    const captured: CapturedSource[] = [];
+    const fakeAssemble = async (input: { sources: CapturedSource[] }) => {
+      captured.push(...input.sources);
+      return {
+        bytes: new Uint8Array([1, 2, 3]),
+        pageCount: 4,
+        bookmarks: [],
+        batesRange: { first: '', last: '' },
+        repairedSourceIndices: [],
+      };
+    };
+
+    await runRenderExportJob(
+      { db, storage, assemble: fakeAssemble as never },
+      { workspaceId: workspace.id, packageId: pkg.id, exportId: exportRow!.id },
+    );
+
+    expect(captured).toHaveLength(1);
+    const source = captured[0]!;
+    // TOC shows the submitted part number, not the full model-number list.
+    expect(source.partNumber).toBe('V06BAA1');
+    expect(source.selectedVariants).toEqual([
+      { partNumber: 'V06BAA1', label: '1/2"', sourcePage: 1 },
+    ]);
+  });
+
   it('marks the export failed and leaves the package status alone when assembly fails', async () => {
     const { workspace, creator, pkg } = await seedReadyPackage('fail');
     workspaceIds.push(workspace.id);

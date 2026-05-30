@@ -59,12 +59,21 @@ async function seedClassifiedSource(label: string) {
   return { workspace: workspace!, pkg: pkg!, item: item!, sourcePdf: sourcePdf! };
 }
 
-function makeDeps(extractResult: unknown) {
+type VerifyFn = (
+  bytes: Uint8Array,
+  targets: { partNumber: string; pageNumber: number }[],
+) => Promise<('found' | 'absent' | 'unverifiable')[]>;
+
+function makeDeps(
+  extractResult: unknown,
+  verifyPartNumbers: VerifyFn = async (_bytes, targets) => targets.map(() => 'found'),
+) {
   return {
     db,
     storage: { getObjectBytes: async () => new Uint8Array([1]) },
     ai: { extractAttributes: async () => extractResult },
     renderPageImages: async () => [new Uint8Array([1])],
+    verifyPartNumbers,
     enqueue: async () => {},
   } as never;
 }
@@ -138,5 +147,41 @@ describe('Phase 4 extract job — variants', () => {
       .from(schema.itemVariants)
       .where(eq(schema.itemVariants.itemId, item.id));
     expect(variants.map((v) => v.partNumber).sort()).toEqual(['NEW1', 'NEW2']);
+  });
+
+  it('records the text-layer verification status for each variant', async () => {
+    const { workspace, pkg, item, sourcePdf } = await seedClassifiedSource('verify');
+    workspaceIds.push(workspace.id);
+
+    await runExtractJob(
+      makeDeps(
+        {
+          manufacturer: field('CANTEX'),
+          model_number: field('Base Spacer'),
+          description: field('Base spacer.'),
+          spec_section_ref: field(null),
+          variants: [
+            { part_number: '5335967', size: '4 x 1', source_page: 1 },
+            // One digit off — the AI mis-extracted this; not on the page.
+            { part_number: '5335867', size: '4 x 2', source_page: 1 },
+          ],
+        },
+        async (_bytes, targets) =>
+          targets.map((t) => (t.partNumber === '5335867' ? 'absent' : 'found')),
+      ),
+      { workspaceId: workspace.id, packageId: pkg.id, sourcePdfId: sourcePdf.id },
+    );
+
+    const variants = await db
+      .select()
+      .from(schema.itemVariants)
+      .where(eq(schema.itemVariants.itemId, item.id))
+      .orderBy(asc(schema.itemVariants.sortOrder));
+
+    const byPart = Object.fromEntries(
+      variants.map((v) => [v.partNumber, v.partNumberVerification]),
+    );
+    expect(byPart['5335967']).toBe('found');
+    expect(byPart['5335867']).toBe('absent');
   });
 });

@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Db, SourcePdf } from '@submittal/db';
 import { schema } from '@submittal/db';
 import type { AppStorage } from '@submittal/shared/storage';
-import { renderPdfPageToWebp } from '@submittal/shared/pdf';
+import { renderPdfPageToWebp, verifyPartNumbers } from '@submittal/shared/pdf';
 import { deriveVariantRows, type ExtractedVariant } from '@submittal/shared/ai';
 
 import {
@@ -37,6 +37,8 @@ type ExtractDeps = {
   storage: Pick<AppStorage, 'getObjectBytes'>;
   ai: ExtractAi;
   renderPageImages?: (input: { bytes: Uint8Array; pageNumbers: number[] }) => Promise<Uint8Array[]>;
+  /** Verify each extracted part number against its source page's text layer. */
+  verifyPartNumbers?: typeof verifyPartNumbers;
   enqueue?: (name: 'batch_order', data: SourcePdfJobData) => Promise<void>;
 };
 
@@ -95,6 +97,8 @@ async function replaceVariants(input: {
   itemId: string;
   variants: ExtractedVariant[];
   sourcePageByNumber: Map<number, string>;
+  bytes: Uint8Array;
+  verify: typeof verifyPartNumbers;
 }) {
   // Re-extraction is authoritative: clear and rewrite the item's variant table.
   await input.db.delete(schema.itemVariants).where(eq(schema.itemVariants.itemId, input.itemId));
@@ -102,14 +106,27 @@ async function replaceVariants(input: {
   const rows = deriveVariantRows(input.variants);
   if (rows.length === 0) return;
 
+  // Verify each part number against its source page's text layer so a
+  // mis-extracted SKU is flagged for review rather than silently shipped.
+  let statuses: Awaited<ReturnType<typeof verifyPartNumbers>> = [];
+  try {
+    statuses = await input.verify(
+      input.bytes,
+      rows.map((row) => ({ partNumber: row.partNumber, pageNumber: row.sourcePage })),
+    );
+  } catch {
+    statuses = [];
+  }
+
   await input.db.insert(schema.itemVariants).values(
-    rows.map((row) => ({
+    rows.map((row, i) => ({
       itemId: input.itemId,
       sourcePageId: input.sourcePageByNumber.get(row.sourcePage) ?? null,
       partNumber: row.partNumber,
       size: row.size,
       secondaryDims: row.secondaryDims ?? null,
       displayLabel: row.displayLabel,
+      partNumberVerification: statuses[i] ?? null,
       sortOrder: row.sortOrder,
       isDefaultForSize: row.isDefaultForSize,
     })),
@@ -156,6 +173,8 @@ export async function runExtractJob(deps: ExtractDeps, data: SourcePdfJobData) {
       itemId: sourcePdf.itemId,
       variants: extracted.variants ?? [],
       sourcePageByNumber,
+      bytes,
+      verify: deps.verifyPartNumbers ?? verifyPartNumbers,
     });
 
     await deps.db

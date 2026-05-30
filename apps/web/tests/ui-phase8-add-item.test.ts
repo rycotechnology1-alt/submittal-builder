@@ -8,6 +8,7 @@ import {
   isWithinPdfSizeLimit,
   validateAddItemFile,
 } from '@/app/(dashboard)/packages/[id]/_components/editor/add-item-helpers';
+import { shouldAutoProceedToSizeSelection } from '@/app/(dashboard)/packages/[id]/_components/upload-processing-helpers';
 
 describe('isValidPdfContentType', () => {
   test('accepts application/pdf', () => {
@@ -97,5 +98,47 @@ describe('validateAddItemFile', () => {
   test('rejects files larger than the cap', () => {
     const rejection = validateAddItemFile(makeFile({ size: MAX_PDF_BYTES + 1 }));
     expect(rejection?.kind).toBe('too_large');
+  });
+});
+
+describe('shouldAutoProceedToSizeSelection', () => {
+  test('returns false when auto-proceed is disabled', () => {
+    expect(
+      shouldAutoProceedToSizeSelection({
+        autoProceedToSizes: false,
+        hasObservedProcessing: true,
+        rows: [{ processingStatus: 'extracted' }],
+      }),
+    ).toBe(false);
+  });
+
+  test('returns false until this upload session has observed processing', () => {
+    expect(
+      shouldAutoProceedToSizeSelection({
+        autoProceedToSizes: true,
+        hasObservedProcessing: false,
+        rows: [{ processingStatus: 'extracted' }],
+      }),
+    ).toBe(false);
+  });
+
+  test('returns true once observed processing rows are all extracted', () => {
+    expect(
+      shouldAutoProceedToSizeSelection({
+        autoProceedToSizes: true,
+        hasObservedProcessing: true,
+        rows: [{ processingStatus: 'extracted' }, { processingStatus: 'extracted' }],
+      }),
+    ).toBe(true);
+  });
+
+  test('does not proceed for only errored or cancelled rows', () => {
+    expect(
+      shouldAutoProceedToSizeSelection({
+        autoProceedToSizes: true,
+        hasObservedProcessing: true,
+        rows: [{ processingStatus: 'error' }, { processingStatus: 'cancelled' }],
+      }),
+    ).toBe(false);
   });
 });

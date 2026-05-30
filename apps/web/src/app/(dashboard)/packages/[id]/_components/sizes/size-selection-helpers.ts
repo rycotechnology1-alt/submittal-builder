@@ -1,4 +1,18 @@
-import type { ItemVariantResponse } from '@submittal/shared/api';
+import type { ItemVariantResponse, PackageItemResponse } from '@submittal/shared/api';
+
+export function canInitializeSizeSelectionQueue({
+  isSuccess,
+  isFetching,
+}: {
+  isSuccess: boolean;
+  isFetching: boolean;
+}): boolean {
+  return isSuccess && !isFetching;
+}
+
+export function needsSizeSelection(item: PackageItemResponse): boolean {
+  return item.variants.length > 1 && item.selected_part_numbers.length === 0;
+}
 
 /**
  * Advisory warning for a variant whose part number could not be found in its

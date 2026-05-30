@@ -33,6 +33,12 @@ async function loadPdfjs() {
 
 type Glyph = { str: string; x: number; y: number; w: number; h: number };
 
+type Box = { x: number; y: number; width: number; height: number };
+
+// A real part number occupies a small fraction of the page width. If a located
+// box is wider than this, treat the locate as low-confidence (don't highlight).
+const MAX_MATCH_WIDTH_FRACTION = 0.5;
+
 /** Cluster glyphs into visual lines by their baseline y. */
 function groupLines(glyphs: Glyph[]): Glyph[][] {
   const sorted = glyphs.slice().sort((a, b) => b.y - a.y || a.x - b.x);
@@ -49,34 +55,60 @@ function groupLines(glyphs: Glyph[]): Glyph[][] {
 
 const normalize = (s: string) => s.replace(/\s+/g, '').toLowerCase();
 
-/** Union bounding box of a set of glyphs. */
-function union(glyphs: Glyph[]): { x: number; y: number; width: number; height: number } {
-  const x0 = Math.min(...glyphs.map((g) => g.x));
-  const y0 = Math.min(...glyphs.map((g) => g.y));
-  const x1 = Math.max(...glyphs.map((g) => g.x + g.w));
-  const y1 = Math.max(...glyphs.map((g) => g.y + g.h));
-  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
-}
-
 /**
- * Find the glyphs covering `target` within a single line. Returns the covered
- * glyphs, or null if the target does not appear in that line.
+ * Find the tight bounding box covering `target` within a single line, or null if
+ * the target does not appear in that line.
+ *
+ * A part number can sit inside one wide text run — paragraph-style sheets render
+ * a whole line as a single pdfjs item. Mapping the matched characters back to
+ * that one run and taking its full width would highlight the entire line, so we
+ * approximate the substring's x-range *within* each contributing run
+ * proportionally (uniform advance across the run's characters) and union those
+ * sub-rectangles. For tabular sheets — where the value is its own narrow run —
+ * the matched chars span the whole run, so this reduces to the run's own box.
  */
-function matchInLine(line: Glyph[], target: string): Glyph[] | null {
-  // Build a whitespace-stripped string with a char→glyph map so a part number
-  // split across multiple text runs still matches.
+function matchInLine(line: Glyph[], target: string): Box | null {
+  // Whitespace-stripped string with each kept char mapped to its run index and
+  // its char offset within that run's original string, so a part number split
+  // across runs still matches and the proportional offset stays accurate.
   let compact = '';
-  const charGlyph: number[] = [];
+  const refs: { gi: number; k: number }[] = [];
   line.forEach((g, gi) => {
-    for (const ch of g.str.replace(/\s+/g, '')) {
+    for (let k = 0; k < g.str.length; k++) {
+      const ch = g.str[k]!;
+      if (/\s/.test(ch)) continue;
       compact += ch.toLowerCase();
-      charGlyph.push(gi);
+      refs.push({ gi, k });
     }
   });
   const idx = compact.indexOf(target);
   if (idx === -1) return null;
-  const glyphIdx = new Set(charGlyph.slice(idx, idx + target.length));
-  return [...glyphIdx].map((gi) => line[gi]!);
+
+  // Per run, the min/max original char index covered by the match.
+  const spans = new Map<number, { kmin: number; kmax: number }>();
+  for (const { gi, k } of refs.slice(idx, idx + target.length)) {
+    const span = spans.get(gi);
+    if (span) {
+      span.kmin = Math.min(span.kmin, k);
+      span.kmax = Math.max(span.kmax, k);
+    } else {
+      spans.set(gi, { kmin: k, kmax: k });
+    }
+  }
+
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const [gi, { kmin, kmax }] of spans) {
+    const g = line[gi]!;
+    const n = g.str.length || 1;
+    x0 = Math.min(x0, g.x + (kmin / n) * g.w);
+    x1 = Math.max(x1, g.x + ((kmax + 1) / n) * g.w);
+    y0 = Math.min(y0, g.y);
+    y1 = Math.max(y1, g.y + g.h);
+  }
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
 type PdfjsDoc = Awaited<ReturnType<typeof Pdfjs.getDocument>['promise']>;
@@ -142,12 +174,16 @@ export async function locatePartNumber(
 
     const matches = groupLines(glyphs)
       .map((line) => matchInLine(line, target))
-      .filter((m): m is Glyph[] => m !== null && m.length > 0);
+      .filter((m): m is Box => m !== null && m.width > 0);
 
     // Ambiguous (multiple lines) or absent ⇒ let the caller stamp instead.
     if (matches.length !== 1) return null;
 
-    const box = union(matches[0]!);
+    const box = matches[0]!;
+    // Low-confidence guard: a plausible part number never spans half the page.
+    // Fall back to a stamp instead of painting a giant rectangle over data.
+    if (box.width > pageWidth * MAX_MATCH_WIDTH_FRACTION) return null;
+
     return { ...box, pageWidth, pageHeight };
   } finally {
     await doc.destroy();

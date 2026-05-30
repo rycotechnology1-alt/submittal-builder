@@ -2,6 +2,7 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -39,6 +40,8 @@ export function AddItemButton({
   label?: string;
 }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [stage, setStage] = useState<Stage>('idle');
   const [progress, setProgress] = useState(0);
@@ -84,6 +87,7 @@ export function AddItemButton({
 
       queryClient.invalidateQueries({ queryKey: ['package', packageId] });
       queryClient.invalidateQueries({ queryKey: ['package-status', packageId] });
+      router.push(`${pathname}?view=upload&after=sizes`);
       toast.success('Processing started. Your new item will appear when classification finishes.');
     } catch (err) {
       toast.error(

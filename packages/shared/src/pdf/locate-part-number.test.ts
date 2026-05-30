@@ -52,6 +52,21 @@ describe('locatePartNumber', () => {
     ]);
     expect(await locatePartNumber(bytes, 1, 'V06BAA1')).toBeNull();
   });
+
+  it('tightly bounds a part number embedded in a wide paragraph text run', async () => {
+    // Paragraph-style sheets render a whole line as one wide pdfjs text item, so
+    // the located box must cover only the token, not the entire line.
+    const paragraph =
+      '2-inch Schedule 40 PVC pipe is offered in 1/2 in. (A52AA42), ' +
+      '3/4 in. (A52BA42), 1 in. (A52CA42), 1-1/4 in. (A52DA42), and 2 in. (A52HA42).';
+    const bytes = await pdfWithText([{ text: paragraph, x: 54, y: 521 }]);
+    const match = await locatePartNumber(bytes, 1, 'A52CA42');
+    expect(match).not.toBeNull();
+    // Token only (~7 chars), not the multi-hundred-point paragraph line.
+    expect(match!.width).toBeLessThan(60);
+    // And positioned where the token actually sits, well past the line start.
+    expect(match!.x).toBeGreaterThan(150);
+  });
 });
 
 /** A one-page PDF with no text layer at all (e.g. a scanned image page). */

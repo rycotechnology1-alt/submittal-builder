@@ -22,6 +22,7 @@ import {
   isCancelableProcessingStatus,
   isTerminalProcessingStatus,
 } from './processing-status';
+import { shouldAutoProceedToSizeSelection } from './upload-processing-helpers';
 
 type PresignResponse = {
   source_pdf_id: string;
@@ -40,12 +41,15 @@ export function UploadProcessingPanel({
   packageId,
   packageStatus,
   sourcePdfCount,
+  autoProceedToSizes = false,
 }: {
   packageId: string;
   packageStatus: PackageDetailResponse['status'];
   sourcePdfCount: number;
+  autoProceedToSizes?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const hasObservedAutoProcessingRef = useRef(false);
   const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
@@ -278,7 +282,7 @@ export function UploadProcessingPanel({
       }));
   }, [cancelingSourcePdfId, removingSourcePdfId, rows, statusQuery.data]);
 
-  const allRows = [...serverRows, ...rows];
+  const allRows = useMemo(() => [...serverRows, ...rows], [serverRows, rows]);
   const statusData = statusQuery.data;
   const hasProcessingError = statusData?.has_errors ?? false;
   const isBlocked = statusData?.processing_state === 'blocked';
@@ -288,6 +292,25 @@ export function UploadProcessingPanel({
   const allReady =
     proceedableRows.length > 0 &&
     proceedableRows.every((row) => row.processingStatus === 'extracted');
+
+  useEffect(() => {
+    if (!autoProceedToSizes) return;
+    if (packageStatus === 'processing' || processingRequested || statusData?.has_active_processing) {
+      hasObservedAutoProcessingRef.current = true;
+    }
+  }, [autoProceedToSizes, packageStatus, processingRequested, statusData?.has_active_processing]);
+
+  useEffect(() => {
+    if (
+      shouldAutoProceedToSizeSelection({
+        autoProceedToSizes,
+        hasObservedProcessing: hasObservedAutoProcessingRef.current,
+        rows: allRows,
+      })
+    ) {
+      router.replace(`${pathname}?view=sizes`);
+    }
+  }, [allRows, autoProceedToSizes, pathname, router]);
 
   function proceedToPackage() {
     // Route through the size-selection step; it forwards to the editor when no

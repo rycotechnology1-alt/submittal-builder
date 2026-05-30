@@ -11,7 +11,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, api } from '@/lib/api';
 import type { ItemVariantResponse, PackageItemResponse } from '@submittal/shared/api';
 
-import { partNumberWarning } from './size-selection-helpers';
+import {
+  canInitializeSizeSelectionQueue,
+  needsSizeSelection,
+  partNumberWarning,
+} from './size-selection-helpers';
 
 const itemsKey = (packageId: string) => ['package-items', packageId] as const;
 
@@ -52,6 +56,7 @@ export function SizeSelectionStep({ packageId }: { packageId: string }) {
   const itemsQuery = useQuery({
     queryKey: itemsKey(packageId),
     queryFn: () => api.get<PackageItemResponse[]>(`/api/v1/packages/${packageId}/items`),
+    refetchOnMount: 'always',
   });
 
   const goToEditor = () => router.replace(`${pathname}?view=assemble`);
@@ -62,13 +67,19 @@ export function SizeSelectionStep({ packageId }: { packageId: string }) {
   // index and skip items.
   const [queue, setQueue] = useState<PackageItemResponse[] | null>(null);
   useEffect(() => {
-    if (queue !== null || !itemsQuery.isSuccess) return;
-    const pending = (itemsQuery.data ?? []).filter(
-      (item) => item.variants.length > 1 && item.selected_part_numbers.length === 0,
-    );
+    if (
+      queue !== null ||
+      !canInitializeSizeSelectionQueue({
+        isSuccess: itemsQuery.isSuccess,
+        isFetching: itemsQuery.isFetching,
+      })
+    ) {
+      return;
+    }
+    const pending = (itemsQuery.data ?? []).filter(needsSizeSelection);
     setQueue(pending);
     if (pending.length === 0) goToEditor();
-  }, [itemsQuery.isSuccess, queue]);
+  }, [itemsQuery.data, itemsQuery.isFetching, itemsQuery.isSuccess, queue]);
 
   const [index, setIndex] = useState(0);
   const current = queue?.[index];

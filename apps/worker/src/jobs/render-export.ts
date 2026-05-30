@@ -119,10 +119,36 @@ export async function runRenderExportJob(deps: RenderExportDeps, data: RenderExp
       sourcePdfsByItem.set(pdf.itemId!, list);
     }
 
+    // Pull the AI-extracted attributes used in the TOC table. Prefer the
+    // current (possibly user-edited) value over the original AI value.
+    const attributeRows = await deps.db
+      .select({
+        itemId: schema.itemAttributes.itemId,
+        key: schema.itemAttributes.key,
+        currentValue: schema.itemAttributes.currentValue,
+      })
+      .from(schema.itemAttributes)
+      .where(inArray(schema.itemAttributes.itemId, itemIds));
+
+    const attributesByItem = new Map<
+      string,
+      { description: string | null; partNumber: string | null; manufacturer: string | null }
+    >();
+    for (const row of attributeRows) {
+      const entry =
+        attributesByItem.get(row.itemId) ??
+        { description: null, partNumber: null, manufacturer: null };
+      if (row.key === 'description') entry.description = row.currentValue;
+      else if (row.key === 'model_number') entry.partNumber = row.currentValue;
+      else if (row.key === 'manufacturer') entry.manufacturer = row.currentValue;
+      attributesByItem.set(row.itemId, entry);
+    }
+
     // Order sources by item.sort_order, then by source-pdf created_at for
     // deterministic merging when an item has multiple PDFs.
     const orderedSources: AssembleSourcePdf[] = [];
     for (const item of items) {
+      const attrs = attributesByItem.get(item.id);
       const list = (sourcePdfsByItem.get(item.id) ?? []).slice().sort(
         (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
       );
@@ -132,6 +158,10 @@ export async function runRenderExportJob(deps: RenderExportDeps, data: RenderExp
         orderedSources.push({
           bytes,
           title: list.length === 1 ? item.title : `${item.title} (${i + 1}/${list.length})`,
+          itemId: item.id,
+          description: attrs?.description ?? null,
+          partNumber: attrs?.partNumber ?? null,
+          manufacturer: attrs?.manufacturer ?? null,
           repair: async (input) => {
             try {
               const repaired = await repair(input);

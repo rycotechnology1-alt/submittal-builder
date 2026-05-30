@@ -182,6 +182,81 @@ describe('Phase 5 render_export worker job', () => {
     expect(job!.status).toBe('succeeded');
   });
 
+  it('passes each item\'s extracted attributes to the assembler for the TOC', async () => {
+    const { workspace, creator, pkg } = await seedReadyPackage('attrs');
+    workspaceIds.push(workspace.id);
+
+    const [item] = await db
+      .insert(schema.items)
+      .values({
+        workspaceId: workspace.id,
+        packageId: pkg.id,
+        docType: 'product_data',
+        title: 'Rigid Conduit',
+        sortOrder: 0,
+      })
+      .returning();
+    await db.insert(schema.itemAttributes).values([
+      { itemId: item!.id, key: 'description', currentValue: 'Rigid galvanized steel conduit, 3/4 in.' },
+      { itemId: item!.id, key: 'model_number', currentValue: 'RGS-075' },
+      { itemId: item!.id, key: 'manufacturer', currentValue: 'Allied Tube' },
+    ]);
+
+    const pdfBytes = await makeFixturePdf(2);
+    const [sourcePdf] = await db
+      .insert(schema.sourcePdfs)
+      .values({
+        workspaceId: workspace.id,
+        packageId: pkg.id,
+        storageKey: `workspaces/${workspace.id}/source_pdfs/conduit.pdf`,
+        originalFilename: 'conduit.pdf',
+        byteSize: pdfBytes.byteLength,
+        sha256: 'feedface',
+        pageCount: 2,
+        processingStatus: 'extracted',
+        itemId: item!.id,
+      })
+      .returning();
+
+    const [exportRow] = await db
+      .insert(schema.exports)
+      .values({
+        packageId: pkg.id,
+        createdByUserId: creator.id,
+        storageKey: `workspaces/${workspace.id}/exports/${item!.id}.pdf`,
+        status: 'pending',
+      })
+      .returning();
+
+    const storage = new FakeStorage();
+    storage.objects.set(sourcePdf!.storageKey, pdfBytes);
+
+    const captured: { sources: { title: string; description?: string | null; partNumber?: string | null; manufacturer?: string | null; itemId?: string }[] }[] = [];
+    const fakeAssemble = async (input: { sources: typeof captured[number]['sources'] }) => {
+      captured.push({ sources: input.sources });
+      return {
+        bytes: new Uint8Array([1, 2, 3]),
+        pageCount: 4,
+        bookmarks: [],
+        batesRange: { first: '', last: '' },
+        repairedSourceIndices: [],
+      };
+    };
+
+    await runRenderExportJob(
+      { db, storage, assemble: fakeAssemble as never },
+      { workspaceId: workspace.id, packageId: pkg.id, exportId: exportRow!.id },
+    );
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.sources).toHaveLength(1);
+    const source = captured[0]!.sources[0]!;
+    expect(source.itemId).toBe(item!.id);
+    expect(source.description).toBe('Rigid galvanized steel conduit, 3/4 in.');
+    expect(source.partNumber).toBe('RGS-075');
+    expect(source.manufacturer).toBe('Allied Tube');
+  });
+
   it('marks the export failed and leaves the package status alone when assembly fails', async () => {
     const { workspace, creator, pkg } = await seedReadyPackage('fail');
     workspaceIds.push(workspace.id);

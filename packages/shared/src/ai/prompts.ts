@@ -16,7 +16,7 @@ export const EXTRACT_SYSTEM_PROMPT = `You extract structured product information
 Return four fields. Each field must be { value, confidence, source_page }.
 - manufacturer: the company that makes the product
 - model_number: the product designation or SKU
-- description: a concise human description of the product or document
+- description: Return a concise 1-2 sentence description of the submitted product or material, focused on what the item is and the most relevant manufacturer-stated specifications needed to identify it. Include key differentiators such as material, size, dimensions, rating, capacity, voltage, wattage, finish/color, mounting type, connection type, configuration, standard/compliance rating, environmental rating, and model-specific features when available. Prioritize objective product data from the submittal and avoid describing intended project use, installation location, design intent, or assumptions not explicitly stated in the document.
 - spec_section_ref: the CSI section only if it appears in the document
 
 Use null when a value is not present. source_page is 1-based. Call the extract_item tool exactly once.`;

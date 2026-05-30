@@ -401,7 +401,7 @@ export function PackageEditor({
               onClick={() => router.push(`${pathname}?view=upload`)}
             >
               <Plus className="h-4 w-4" />
-              Add more PDFs
+              Add Bulk Items
             </Button>
             <AddItemButton packageId={packageId} />
             <Button

@@ -62,6 +62,7 @@ export const itemVariantSchema = z.object({
   is_default_for_size: z.boolean(),
   selected: z.boolean(),
   source_page_id: uuidSchema.nullable(),
+  part_number_verification: z.enum(['found', 'absent', 'unverifiable']).nullable(),
 });
 
 export const packageItemResponseSchema = z.object({

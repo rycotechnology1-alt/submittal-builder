@@ -105,6 +105,7 @@ export function itemVariantJson(row: ItemVariant) {
     is_default_for_size: row.isDefaultForSize,
     selected: row.selectedAt !== null,
     source_page_id: row.sourcePageId,
+    part_number_verification: row.partNumberVerification ?? null,
   };
 }
 

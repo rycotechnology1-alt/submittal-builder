@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, api } from '@/lib/api';
 import type { ItemVariantResponse, PackageItemResponse } from '@submittal/shared/api';
+
+import { partNumberWarning } from './size-selection-helpers';
 
 const itemsKey = (packageId: string) => ['package-items', packageId] as const;
 
@@ -228,6 +230,9 @@ function SizeSelectionItem({
                 >
                   {active ? <Check className="h-3.5 w-3.5" /> : null}
                   {group.size}
+                  {group.variants.some((v) => partNumberWarning(v)) ? (
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-hidden />
+                  ) : null}
                 </button>
               );
             })}
@@ -236,24 +241,35 @@ function SizeSelectionItem({
           {/* Secondary-dimension overrides for chosen sizes that have options. */}
           {groups
             .filter((g) => chosen.has(g.size) && g.variants.length > 1)
-            .map((group) => (
-              <label key={group.size} className="mt-4 block text-sm">
-                <span className="text-muted-foreground">{group.size} option</span>
-                <select
-                  className="mt-1 block w-full rounded-md border bg-card px-2 py-1.5 text-sm"
-                  value={variantIdForSize(group)}
-                  onChange={(e) =>
-                    setOverrides((current) => ({ ...current, [group.size]: e.target.value }))
-                  }
-                >
-                  {group.variants.map((variant) => (
-                    <option key={variant.id} value={variant.id}>
-                      {variant.display_label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
+            .map((group) => {
+              const resolved = group.variants.find((v) => v.id === variantIdForSize(group));
+              const warning = resolved ? partNumberWarning(resolved) : null;
+              return (
+                <label key={group.size} className="mt-4 block text-sm">
+                  <span className="text-muted-foreground">{group.size} option</span>
+                  <select
+                    className="mt-1 block w-full rounded-md border bg-card px-2 py-1.5 text-sm"
+                    value={variantIdForSize(group)}
+                    onChange={(e) =>
+                      setOverrides((current) => ({ ...current, [group.size]: e.target.value }))
+                    }
+                  >
+                    {group.variants.map((variant) => (
+                      <option key={variant.id} value={variant.id}>
+                        {variant.display_label}
+                        {partNumberWarning(variant) ? ' ⚠' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {warning ? (
+                    <span className="mt-1 flex items-center gap-1 text-xs text-amber-600">
+                      <AlertTriangle className="h-3 w-3" aria-hidden />
+                      {warning}
+                    </span>
+                  ) : null}
+                </label>
+              );
+            })}
         </div>
       </div>
 

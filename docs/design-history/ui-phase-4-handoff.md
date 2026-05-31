@@ -132,7 +132,7 @@ editor surface area; suggested checks:
 ## Where to start
 
 The natural next slice is **Screen 6 - Cover sheet form** from
-[step-6-wireframes.md](step-6-wireframes.md):
+[wireframes.md](wireframes.md):
 
 - Wire the disabled `[Cover sheet]` button in the editor toolbar to a slide-
   down or modal form with `PATCH /api/v1/packages/:id` for editable fields

@@ -95,7 +95,7 @@ Manual browser smoke:
 ## Where to start
 
 The natural next slice is **Screen 5 - Package Editor (TOC review)** from
-[step-6-wireframes.md](step-6-wireframes.md):
+[wireframes.md](wireframes.md):
 
 - Reuse the `/packages/[id]` route and replace the current `ready` placeholder.
 - Read `GET /api/v1/packages/:id/items` for the item list with attributes,

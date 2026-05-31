@@ -7,7 +7,7 @@ numbered UI phases.
 
 ## What I built
 
-**Screen 7 — Export** from [step-6-wireframes.md:329-410](step-6-wireframes.md):
+**Screen 7 — Export** from [wireframes.md:329-410](wireframes.md):
 Phases A (confirmation) and B (rendering progress) live in a dialog; Phase C
 (ready / download) is the new exported-state view on the package page.
 

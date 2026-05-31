@@ -136,11 +136,10 @@ async function replaceVariants(input: {
 }
 
 export async function runExtractJob(deps: ExtractDeps, data: SourcePdfJobData) {
-  await markJobRunning(deps.db, data, 'extract', data.sourcePdfId);
-
   try {
     const sourcePdf = await loadRunnableSourcePdf(deps.db, data, 'extract');
     if (!sourcePdf) return null;
+    await markJobRunning(deps.db, data, 'extract', data.sourcePdfId);
     if (!sourcePdf.itemId) throw new Error(`source_pdf has not been classified: ${sourcePdf.id}`);
 
     await deps.db

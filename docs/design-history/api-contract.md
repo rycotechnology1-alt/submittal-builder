@@ -2,7 +2,7 @@
 
 ## Context
 
-Step 4 locked the data model (see `review-product-brief-md-we-are-quirky-cat.md`). This document defines the **HTTP API contract** that sits between the web client and the server — the surface needed to drive the critical user flow in brief §8 (create package → upload PDFs → AI processing → review/edit → cover sheet → export).
+Step 4 locked the data model (see `data-model.md`). This document defines the **HTTP API contract** that sits between the web client and the server — the surface needed to drive the critical user flow in brief §8 (create package → upload PDFs → AI processing → review/edit → cover sheet → export).
 
 **Confirmed via clarifying questions:** REST + JSON; polling for async AI processing; presigned S3 URLs for direct browser → S3 upload; HTTP-only session cookies for auth.
 

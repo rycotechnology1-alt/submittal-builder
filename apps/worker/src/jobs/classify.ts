@@ -44,11 +44,10 @@ async function defaultRenderPageImages(input: { bytes: Uint8Array; pageNumbers: 
 }
 
 export async function runClassifyJob(deps: ClassifyDeps, data: SourcePdfJobData) {
-  await markJobRunning(deps.db, data, 'classify', data.sourcePdfId);
-
   try {
     const sourcePdf = await loadRunnableSourcePdf(deps.db, data, 'classify');
     if (!sourcePdf) return null;
+    await markJobRunning(deps.db, data, 'classify', data.sourcePdfId);
 
     const bytes = await deps.storage.getObjectBytes(sourcePdf.storageKey);
     const images = await (deps.renderPageImages ?? defaultRenderPageImages)({

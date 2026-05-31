@@ -100,7 +100,7 @@ your starting point.
 
 ## Where to start
 
-Read [step-6-wireframes.md](step-6-wireframes.md) Screen 3 onward and
+Read [wireframes.md](wireframes.md) Screen 3 onward and
 [step-8-final-handoff.md](step-8-final-handoff.md) for endpoint shapes.
 
 The natural next slice is **Screen 3 (Project detail) + new package modal**,

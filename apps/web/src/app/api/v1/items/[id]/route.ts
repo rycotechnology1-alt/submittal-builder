@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { updateItemRequestSchema } from '@submittal/shared/api';
 
 import { noContent, parseJson, type RouteContext, uuidParam } from '@/server/api';
 import { db, schema } from '@/server/db';
+import {
+  bestEffortDeleteObjects,
+  updatePackageStatusAfterContentRemoval,
+} from '@/server/hard-delete';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
 import { findLiveItem, itemJson, notFound } from '@/server/phase2-records';
 
@@ -53,21 +57,32 @@ export async function DELETE(req: Request, context: RouteContext<{ id: string }>
     const item = await findLiveItem(ctx.workspaceId, id);
     if (!item) return notFound();
 
+    const linkedSourcePdfs = await db
+      .select({ id: schema.sourcePdfs.id, storageKey: schema.sourcePdfs.storageKey })
+      .from(schema.sourcePdfs)
+      .where(
+        and(
+          eq(schema.sourcePdfs.workspaceId, ctx.workspaceId),
+          eq(schema.sourcePdfs.itemId, item.id),
+        ),
+      );
+    const linkedSourcePdfIds = linkedSourcePdfs.map((pdf) => pdf.id);
+    const storageKeys = linkedSourcePdfs.map((pdf) => pdf.storageKey);
+
     await db.transaction(async (tx) => {
-      await tx
-        .update(schema.items)
-        .set({ deletedAt: new Date(), updatedAt: new Date() })
-        .where(eq(schema.items.id, item.id));
-      await tx
-        .update(schema.sourcePdfs)
-        .set({ itemId: null, updatedAt: new Date() })
-        .where(
-          and(
-            eq(schema.sourcePdfs.workspaceId, ctx.workspaceId),
-            eq(schema.sourcePdfs.itemId, item.id),
-          ),
-        );
+      if (linkedSourcePdfIds.length > 0) {
+        await tx
+          .delete(schema.sourcePdfs)
+          .where(inArray(schema.sourcePdfs.id, linkedSourcePdfIds));
+      }
+      await tx.delete(schema.items).where(eq(schema.items.id, item.id));
+      await updatePackageStatusAfterContentRemoval(tx as unknown as typeof db, {
+        packageId: item.packageId,
+        workspaceId: ctx.workspaceId,
+      });
     });
+
+    await bestEffortDeleteObjects(storageKeys);
 
     return noContent();
   });

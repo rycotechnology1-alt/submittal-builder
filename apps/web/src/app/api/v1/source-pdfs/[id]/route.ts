@@ -11,11 +11,15 @@ import {
 } from '@/server/api';
 import { db, schema } from '@/server/db';
 import {
+  bestEffortDeleteObjects,
+  updatePackageStatusAfterContentRemoval,
+} from '@/server/hard-delete';
+import {
+  findLivePackage,
   findSourcePdfInLivePackage,
   notFound,
   sourcePdfJson,
 } from '@/server/phase2-records';
-import { getStorage } from '@/server/storage';
 import { withWorkspaceFromHeaders } from '@/server/workspace';
 
 export async function PATCH(req: Request, context: RouteContext<{ id: string }>) {
@@ -27,6 +31,14 @@ export async function PATCH(req: Request, context: RouteContext<{ id: string }>)
   const result = await withWorkspaceFromHeaders(req.headers, async (ctx) => {
     const sourcePdf = await findSourcePdfInLivePackage(ctx.workspaceId, id);
     if (!sourcePdf) return notFound();
+
+    if (body.item_id === null) {
+      return jsonError(
+        409,
+        'source_pdf_unassign_unsupported',
+        'Source PDFs can be reassigned to another item or deleted from the package',
+      );
+    }
 
     if (body.item_id) {
       const [item] = await db
@@ -71,22 +83,35 @@ export async function DELETE(req: Request, context: RouteContext<{ id: string }>
     const sourcePdf = await findSourcePdfInLivePackage(ctx.workspaceId, id);
     if (!sourcePdf) return notFound();
 
-    // Source PDFs that were never extracted (cancelled, errored, or still in an
-    // earlier stage) have no source pages, so they cannot be referenced by any
-    // export. Allow them to be deleted unconditionally. Extracted PDFs may have
-    // contributed pages to a rendered export and remain protected.
-    if (sourcePdf.processingStatus === 'extracted') {
-      const [exportCount] = await db
-        .select({ value: count() })
-        .from(schema.exports)
-        .where(eq(schema.exports.packageId, sourcePdf.packageId));
-      if ((exportCount?.value ?? 0) > 0) {
-        return jsonError(409, 'source_pdf_exported', 'Source PDF is referenced by an export');
-      }
-    }
+    const pkg = await findLivePackage(ctx.workspaceId, sourcePdf.packageId);
+    if (!pkg) return notFound();
 
-    await getStorage().deleteObject(sourcePdf.storageKey);
-    await db.delete(schema.sourcePdfs).where(eq(schema.sourcePdfs.id, sourcePdf.id));
+    await db.transaction(async (tx) => {
+      await tx.delete(schema.sourcePdfs).where(eq(schema.sourcePdfs.id, sourcePdf.id));
+
+      if (sourcePdf.itemId) {
+        const [remainingSourceCount] = await tx
+          .select({ value: count() })
+          .from(schema.sourcePdfs)
+          .where(
+            and(
+              eq(schema.sourcePdfs.workspaceId, ctx.workspaceId),
+              eq(schema.sourcePdfs.packageId, sourcePdf.packageId),
+              eq(schema.sourcePdfs.itemId, sourcePdf.itemId),
+            ),
+          );
+        if ((remainingSourceCount?.value ?? 0) === 0) {
+          await tx.delete(schema.items).where(eq(schema.items.id, sourcePdf.itemId));
+        }
+      }
+
+      await updatePackageStatusAfterContentRemoval(tx as unknown as typeof db, {
+        packageId: sourcePdf.packageId,
+        workspaceId: ctx.workspaceId,
+      });
+    });
+
+    await bestEffortDeleteObjects([sourcePdf.storageKey]);
     return noContent();
   });
 

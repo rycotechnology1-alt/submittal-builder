@@ -26,11 +26,10 @@ function rawTextractKey(sourcePdf: SourcePdf) {
 }
 
 export async function runOcrJob(deps: OcrDeps, data: SourcePdfJobData) {
-  await markJobRunning(deps.db, data, 'ocr', data.sourcePdfId);
-
   try {
     const sourcePdf = await loadRunnableSourcePdf(deps.db, data, 'ocr');
     if (!sourcePdf) return null;
+    await markJobRunning(deps.db, data, 'ocr', data.sourcePdfId);
 
     const sourcePages = await deps.db
       .select()

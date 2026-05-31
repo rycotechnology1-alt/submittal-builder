@@ -445,6 +445,16 @@ describe('Phase 5 audit-aware item APIs', () => {
     const user = await createAuthedUser('reassign-locked');
     emails.push(user.email);
     const { pkg, item } = await createReadyPackageWithItem(user);
+    const [otherItem] = await db
+      .insert(schema.items)
+      .values({
+        workspaceId: user.workspaceId,
+        packageId: pkg.id,
+        docType: 'warranty',
+        title: 'Other exported item',
+        sortOrder: 1,
+      })
+      .returning();
     const [sourcePdf] = await db
       .insert(schema.sourcePdfs)
       .values({
@@ -463,9 +473,46 @@ describe('Phase 5 audit-aware item APIs', () => {
     await db.update(schema.packages).set({ status: 'exported' }).where(eq(schema.packages.id, pkg.id));
 
     const res = await sourcePdfPATCH(
-      jsonReq(`/api/v1/source-pdfs/${sourcePdf!.id}`, user.cookie, { item_id: null }, 'PATCH'),
+      jsonReq(
+        `/api/v1/source-pdfs/${sourcePdf!.id}`,
+        user.cookie,
+        { item_id: otherItem!.id },
+        'PATCH',
+      ),
       ctx({ id: sourcePdf!.id }),
     );
     expect(res.status).toBe(200);
+
+    const [updated] = await db
+      .select({ itemId: schema.sourcePdfs.itemId })
+      .from(schema.sourcePdfs)
+      .where(eq(schema.sourcePdfs.id, sourcePdf!.id));
+    expect(updated!.itemId).toBe(otherItem!.id);
+  });
+
+  it('PATCH /source-pdfs/:id rejects unassigning a source PDF', async () => {
+    const user = await createAuthedUser('unassign-rejected');
+    emails.push(user.email);
+    const { pkg, item } = await createReadyPackageWithItem(user);
+    const [sourcePdf] = await db
+      .insert(schema.sourcePdfs)
+      .values({
+        workspaceId: user.workspaceId,
+        packageId: pkg.id,
+        storageKey: `workspaces/${user.workspaceId}/source_pdfs/${randomUUID()}.pdf`,
+        originalFilename: 'no-unassign.pdf',
+        byteSize: 100,
+        sha256: randomUUID().replaceAll('-', ''),
+        pageCount: 1,
+        processingStatus: 'extracted',
+        itemId: item.id,
+      })
+      .returning();
+
+    const res = await sourcePdfPATCH(
+      jsonReq(`/api/v1/source-pdfs/${sourcePdf!.id}`, user.cookie, { item_id: null }, 'PATCH'),
+      ctx({ id: sourcePdf!.id }),
+    );
+    expect(res.status).toBe(409);
   });
 });

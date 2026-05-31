@@ -381,6 +381,63 @@ describe('Phase 4 worker jobs', () => {
     });
   });
 
+  it('no-ops source-specific jobs when the source PDF was deleted before pickup', async () => {
+    const { workspace, pkg } = await insertPackage();
+    workspaceIds.push(workspace.id);
+    const { pdf } = await insertSourcePdf({
+      workspaceId: workspace.id,
+      packageId: pkg.id,
+      filename: 'deleted-before-pickup.pdf',
+    });
+    await db.delete(schema.sourcePdfs).where(eq(schema.sourcePdfs.id, pdf.id));
+
+    const data = { workspaceId: workspace.id, packageId: pkg.id, sourcePdfId: pdf.id };
+    const storage = new FakeStorage();
+
+    const classified = await runClassifyJob(
+      {
+        db,
+        storage,
+        renderPageImages: async () => {
+          throw new Error('deleted job should not render');
+        },
+        ai: {
+          classifyDocument: async () => {
+            throw new Error('deleted job should not call AI');
+          },
+        },
+      },
+      data,
+    );
+    expect(classified).toBeNull();
+
+    const extracted = await runExtractJob(
+      {
+        db,
+        storage,
+        renderPageImages: async () => {
+          throw new Error('deleted job should not render');
+        },
+        ai: {
+          extractAttributes: async () => {
+            throw new Error('deleted job should not call AI');
+          },
+        },
+        enqueue: async () => {
+          throw new Error('deleted job should not enqueue batch ordering');
+        },
+      },
+      data,
+    );
+    expect(extracted).toBeNull();
+
+    const items = await db
+      .select()
+      .from(schema.items)
+      .where(and(eq(schema.items.workspaceId, workspace.id), eq(schema.items.packageId, pkg.id)));
+    expect(items).toHaveLength(0);
+  });
+
   it('records a separate processing job row for each retry attempt', async () => {
     const { workspace, pkg } = await insertPackage();
     workspaceIds.push(workspace.id);

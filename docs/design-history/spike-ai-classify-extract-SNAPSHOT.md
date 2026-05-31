@@ -45,7 +45,7 @@ These are committed JSON files that Phase 4 tests will mock against, eliminating
 
 ## ItemAttribute shape compliance
 
-Each `extract.json` validates against a Zod schema mirroring the `item_attributes` row shape from [review-product-brief-md-we-are-quirky-cat.md:115](../../review-product-brief-md-we-are-quirky-cat.md):
+Each `extract.json` validates against a Zod schema mirroring the `item_attributes` row shape from [data-model.md:115](data-model.md):
 
 ```js
 { value: string | null, confidence: number (0..1), source_page: integer >= 1 }

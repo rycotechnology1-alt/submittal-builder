@@ -1,7 +1,7 @@
 // Drizzle schema for Submittal Builder MVP.
 //
 // Tables mirror the data model in
-// `docs/design-history/review-product-brief-md-we-are-quirky-cat.md`. Auth tables (users, sessions,
+// `docs/design-history/data-model.md`. Auth tables (users, sessions,
 // accounts, verifications) are owned by better-auth — we still declare them
 // here so Drizzle generates the migration and our `withWorkspace()` helper can
 // reference foreign keys against `users.id`.

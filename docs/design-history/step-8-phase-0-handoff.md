@@ -150,7 +150,7 @@ Per [step-8-buildplan.md:34](step-8-buildplan.md):
 - `pnpm-workspace.yaml` + root `package.json`
 - `apps/web/` — Next.js 15 App Router, strict TS, better-auth wired
 - `apps/worker/` — Node 20 + pg-boss stub, `/healthz` returns 200 only
-- `packages/db/` — Drizzle schema covering every table from [review-product-brief-md-we-are-quirky-cat.md](review-product-brief-md-we-are-quirky-cat.md), plus `0001_init.sql` migration applied to the Neon dev branch
+- `packages/db/` — Drizzle schema covering every table from [data-model.md](data-model.md), plus `0001_init.sql` migration applied to the Neon dev branch
 - `packages/shared/` — empty stubs for the Zod-API-schemas / AI-prompts / PDF-utils modules later phases will fill in
 - `.github/workflows/ci.yml` — lint + typecheck + vitest on PR
 - `apps/web/src/server/workspace.ts` — `withWorkspace()` tenancy helper (every authed request resolves workspace_id, cross-workspace IDs → 404 not 403)

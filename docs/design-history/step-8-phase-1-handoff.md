@@ -26,7 +26,7 @@ Tooling:
 
 ### Database — `packages/db`
 
-Drizzle schema in [packages/db/src/schema.ts](packages/db/src/schema.ts) covers all 13 tables from [the data model](review-product-brief-md-we-are-quirky-cat.md):
+Drizzle schema in [packages/db/src/schema.ts](packages/db/src/schema.ts) covers all 13 tables from [the data model](data-model.md):
 
 | Domain table | Better-auth tables |
 |---|---|
@@ -286,5 +286,5 @@ Always filter by `ctx.workspaceId`. Use `isNull(deletedAt)` for soft-delete-awar
 ### Risks to surface during Phase 2
 
 - **Idempotency-Key.** Step-5 §Conventions calls for an idempotency-key header on mutating endpoints. Phase 4 + 6 enforce it for real; Phase 2 should accept and ignore it (do not 400 if the header is missing or unrecognized — that breaks Phase 1's expectation of a free CSRF token).
-- **Pagination envelope.** [step-5 §12](step-5-api-contract.md) recommends shipping the `{ data, next_cursor }` envelope from day 1. Decide before the first list endpoint lands; retrofitting later is a breaking change.
+- **Pagination envelope.** [step-5 §12](api-contract.md) recommends shipping the `{ data, next_cursor }` envelope from day 1. Decide before the first list endpoint lands; retrofitting later is a breaking change.
 - **Soft delete cascade semantics.** Deleting a project should hide its packages from list endpoints but not cascade `deleted_at` to them. Pick a convention (filter on the join in the API, or denormalize parent `deleted_at`) and use it consistently.

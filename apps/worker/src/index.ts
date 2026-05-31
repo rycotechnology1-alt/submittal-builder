@@ -170,7 +170,7 @@ async function registerWorkers() {
     async (jobs) => {
       for (const job of jobs) {
         await runWithLogging('classify', job.data, async () => {
-          await runClassifyJob(
+          const item = await runClassifyJob(
             {
               db,
               storage: requireStorage(),
@@ -178,7 +178,7 @@ async function registerWorkers() {
             },
             job.data,
           );
-          await enqueueChainedJob('extract', job.data);
+          if (item) await enqueueChainedJob('extract', job.data);
         });
       }
     },

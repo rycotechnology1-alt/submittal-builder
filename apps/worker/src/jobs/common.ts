@@ -94,9 +94,10 @@ export async function loadRunnableSourcePdf(
       ),
     )
     .limit(1);
-  if (!sourcePdf) throw new Error(`source_pdf not found: ${data.sourcePdfId}`);
+  if (!sourcePdf) return null;
 
   if (sourcePdf.processingStatus === 'cancelled') {
+    await markJobRunning(db, data, kind, data.sourcePdfId);
     await markJobFailed(db, data, kind, new Error(CANCELLED_PROCESSING_MESSAGE), data.sourcePdfId);
     return null;
   }

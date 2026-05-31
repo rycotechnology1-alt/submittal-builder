@@ -7,11 +7,11 @@ Steps 1–7 produced the brief, data model, API contract, wireframes, and stack 
 This plan slices that work into **7 sequenced phases (0–6)**. Each phase is small enough for one coding agent to execute against a fresh context, produces a runnable artifact, and ends by writing a handoff doc into the repo so the next agent can pick up cold. Decisions already locked in step-7 (Next.js 15 + Drizzle + Neon + S3 + Fly worker + pg-boss + Anthropic Sonnet 4.6 + Textract + Resend) are inputs to every phase — this plan does not relitigate them.
 
 Source design docs (read by every phase):
-- [product-brief.md](C:/Repos/submittal-builder/product-brief.md) — MVP outcome + flow + scope
-- [review-product-brief-md-we-are-quirky-cat.md](C:/Repos/submittal-builder/review-product-brief-md-we-are-quirky-cat.md) — data model
-- [step-5-api-contract.md](C:/Repos/submittal-builder/step-5-api-contract.md) — HTTP API surface
-- [step-6-wireframes.md](C:/Repos/submittal-builder/step-6-wireframes.md) — UI expectations on the API
-- [step-7-stack-lockin.md](C:/Repos/submittal-builder/step-7-stack-lockin.md) — libraries, hosting, deployment
+- [product-brief.md](product-brief.md) — MVP outcome + flow + scope
+- [data-model.md](data-model.md) — data model
+- [api-contract.md](api-contract.md) — HTTP API surface
+- [wireframes.md](wireframes.md) — UI expectations on the API
+- [step-7-stack-lockin.md](step-7-stack-lockin.md) — libraries, hosting, deployment
 
 ## Phasing principles
 

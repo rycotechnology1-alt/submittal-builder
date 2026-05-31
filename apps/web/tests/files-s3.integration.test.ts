@@ -120,6 +120,7 @@ async function loadRoutes() {
     packageStatus,
     sourcePdfPresign,
     sourcePdfConfirm,
+    itemDelete,
     sourcePdfDownload,
     sourcePdfDelete,
     sourcePagePreview,
@@ -133,6 +134,7 @@ async function loadRoutes() {
     import('@/app/api/v1/packages/[id]/status/route'),
     import('@/app/api/v1/packages/[id]/source-pdfs/presign/route'),
     import('@/app/api/v1/packages/[id]/source-pdfs/[sourcePdfId]/confirm/route'),
+    import('@/app/api/v1/items/[id]/route'),
     import('@/app/api/v1/source-pdfs/[id]/download/route'),
     import('@/app/api/v1/source-pdfs/[id]/route'),
     import('@/app/api/v1/source-pages/[id]/preview/route'),
@@ -148,6 +150,7 @@ async function loadRoutes() {
     packageStatusGET: packageStatus.GET,
     sourcePdfPresignPOST: sourcePdfPresign.POST,
     sourcePdfConfirmPOST: sourcePdfConfirm.POST,
+    itemDELETE: itemDelete.DELETE,
     sourcePdfDownloadGET: sourcePdfDownload.GET,
     sourcePdfDELETE: sourcePdfDelete.DELETE,
     sourcePagePreviewGET: sourcePagePreview.GET,
@@ -184,13 +187,13 @@ async function createAuthedUser(routes: Awaited<ReturnType<typeof loadRoutes>>, 
   jar.ingest(signin);
 
   const [user] = await db
-    .select({ workspaceId: schema.users.workspaceId })
+    .select({ id: schema.users.id, workspaceId: schema.users.workspaceId })
     .from(schema.users)
     .where(eq(schema.users.email, email))
     .limit(1);
   expect(user).toBeDefined();
 
-  return { email, cookie: jar.header(), workspaceId: user!.workspaceId };
+  return { email, cookie: jar.header(), userId: user!.id, workspaceId: user!.workspaceId };
 }
 
 async function createPackage(routes: Awaited<ReturnType<typeof loadRoutes>>, cookie: string) {
@@ -401,6 +404,186 @@ describe('Phase 3 file handling', () => {
         details: { existing_source_pdf_id: first.source_pdf_id },
       },
     });
+  });
+
+  it('DELETE item removes linked source PDFs and allows the same PDF to be re-uploaded', async () => {
+    const routes = await loadRoutes();
+    const user = await createAuthedUser(routes, 'delete-item-reupload');
+    emails.push(user.email);
+    const pkg = await createPackage(routes, user.cookie);
+    const pdfBytes = new Uint8Array(await readFile(FIXTURE_PDF));
+
+    async function presignUploadConfirm(filename: string) {
+      const presign = await routes.sourcePdfPresignPOST(
+        jsonReq(`/api/v1/packages/${pkg.id}/source-pdfs/presign`, user.cookie, {
+          filename,
+          byte_size: pdfBytes.byteLength,
+          content_type: 'application/pdf',
+        }),
+        ctx({ id: pkg.id }),
+      );
+      expect(presign.status).toBe(201);
+      const body = (await presign.json()) as { source_pdf_id: string; storage_key: string };
+      await storage.putObject({
+        key: body.storage_key,
+        body: pdfBytes,
+        contentType: 'application/pdf',
+      });
+      const confirm = await routes.sourcePdfConfirmPOST(
+        jsonReq(
+          `/api/v1/packages/${pkg.id}/source-pdfs/${body.source_pdf_id}/confirm`,
+          user.cookie,
+          {},
+        ),
+        ctx({ id: pkg.id, sourcePdfId: body.source_pdf_id }),
+      );
+      return { presign: body, confirm };
+    }
+
+    const first = await presignUploadConfirm('delete-me.pdf');
+    expect(first.confirm.status).toBe(200);
+
+    const [item] = await db
+      .insert(schema.items)
+      .values({
+        workspaceId: user.workspaceId,
+        packageId: pkg.id,
+        title: 'Delete me',
+        docType: 'product_data',
+        sortOrder: 0,
+      })
+      .returning();
+    await db
+      .update(schema.sourcePdfs)
+      .set({ itemId: item!.id, processingStatus: 'extracted' })
+      .where(eq(schema.sourcePdfs.id, first.presign.source_pdf_id));
+    const [page] = await db
+      .select()
+      .from(schema.sourcePages)
+      .where(eq(schema.sourcePages.sourcePdfId, first.presign.source_pdf_id))
+      .limit(1);
+    await db.insert(schema.itemAttributes).values({
+      itemId: item!.id,
+      key: 'manufacturer',
+      currentValue: 'Acme',
+      sourcePageId: page!.id,
+    });
+    await db.insert(schema.itemVariants).values({
+      itemId: item!.id,
+      sourcePageId: page!.id,
+      partNumber: 'AC-1',
+      size: '1 in',
+      displayLabel: '1 in',
+      selectedAt: new Date(),
+    });
+    await db.insert(schema.processingJobs).values({
+      packageId: pkg.id,
+      sourcePdfId: first.presign.source_pdf_id,
+      kind: 'extract',
+      status: 'succeeded',
+      attempts: 1,
+    });
+    await db.insert(schema.exports).values({
+      packageId: pkg.id,
+      createdByUserId: user.userId,
+      storageKey: `workspaces/${user.workspaceId}/exports/${randomUUID()}.pdf`,
+      status: 'ready',
+    });
+    await db
+      .update(schema.packages)
+      .set({ status: 'exported' })
+      .where(eq(schema.packages.id, pkg.id));
+
+    const deleted = await routes.itemDELETE(
+      authedReq(`/api/v1/items/${item!.id}`, user.cookie, { method: 'DELETE' }),
+      ctx({ id: item!.id }),
+    );
+    expect(deleted.status).toBe(204);
+
+    await expect(
+      db.select().from(schema.sourcePdfs).where(eq(schema.sourcePdfs.id, first.presign.source_pdf_id)),
+    ).resolves.toHaveLength(0);
+    await expect(
+      db.select().from(schema.sourcePages).where(eq(schema.sourcePages.sourcePdfId, first.presign.source_pdf_id)),
+    ).resolves.toHaveLength(0);
+    await expect(db.select().from(schema.items).where(eq(schema.items.id, item!.id))).resolves.toHaveLength(0);
+    await expect(
+      db.select().from(schema.itemAttributes).where(eq(schema.itemAttributes.itemId, item!.id)),
+    ).resolves.toHaveLength(0);
+    await expect(
+      db.select().from(schema.itemVariants).where(eq(schema.itemVariants.itemId, item!.id)),
+    ).resolves.toHaveLength(0);
+    await expect(
+      db.select().from(schema.processingJobs).where(eq(schema.processingJobs.sourcePdfId, first.presign.source_pdf_id)),
+    ).resolves.toHaveLength(0);
+    await expect(db.select().from(schema.exports).where(eq(schema.exports.packageId, pkg.id))).resolves.toHaveLength(1);
+    expect(storage.deletedKeys).toContain(first.presign.storage_key);
+
+    const [packageAfterDelete] = await db
+      .select({ status: schema.packages.status })
+      .from(schema.packages)
+      .where(eq(schema.packages.id, pkg.id));
+    expect(packageAfterDelete!.status).toBe('ready');
+
+    const second = await presignUploadConfirm('delete-me-again.pdf');
+    expect(second.confirm.status).toBe(200);
+  });
+
+  it('DELETE source PDF removes the only item source even after export', async () => {
+    const routes = await loadRoutes();
+    const user = await createAuthedUser(routes, 'delete-exported-source');
+    emails.push(user.email);
+    const pkg = await createPackage(routes, user.cookie);
+
+    const [item] = await db
+      .insert(schema.items)
+      .values({
+        workspaceId: user.workspaceId,
+        packageId: pkg.id,
+        title: 'Exported item',
+        docType: 'product_data',
+      })
+      .returning();
+    const [sourcePdf] = await db
+      .insert(schema.sourcePdfs)
+      .values({
+        workspaceId: user.workspaceId,
+        packageId: pkg.id,
+        storageKey: `workspaces/${user.workspaceId}/source_pdfs/${randomUUID()}.pdf`,
+        originalFilename: 'exported.pdf',
+        byteSize: 100,
+        sha256: randomUUID().replaceAll('-', ''),
+        pageCount: 1,
+        processingStatus: 'extracted',
+        itemId: item!.id,
+      })
+      .returning();
+    await db.insert(schema.exports).values({
+      packageId: pkg.id,
+      createdByUserId: user.userId,
+      storageKey: `workspaces/${user.workspaceId}/exports/${randomUUID()}.pdf`,
+      status: 'ready',
+    });
+    await db
+      .update(schema.packages)
+      .set({ status: 'exported' })
+      .where(eq(schema.packages.id, pkg.id));
+
+    const deleted = await routes.sourcePdfDELETE(
+      authedReq(`/api/v1/source-pdfs/${sourcePdf!.id}`, user.cookie, { method: 'DELETE' }),
+      ctx({ id: sourcePdf!.id }),
+    );
+    expect(deleted.status).toBe(204);
+
+    await expect(db.select().from(schema.sourcePdfs).where(eq(schema.sourcePdfs.id, sourcePdf!.id))).resolves.toHaveLength(0);
+    await expect(db.select().from(schema.items).where(eq(schema.items.id, item!.id))).resolves.toHaveLength(0);
+    await expect(db.select().from(schema.exports).where(eq(schema.exports.packageId, pkg.id))).resolves.toHaveLength(1);
+
+    const [packageAfterDelete] = await db
+      .select({ status: schema.packages.status })
+      .from(schema.packages)
+      .where(eq(schema.packages.id, pkg.id));
+    expect(packageAfterDelete!.status).toBe('ready');
   });
 
   it('presigns and confirms the workspace logo, then returns a presigned logo URL', async () => {

@@ -50,6 +50,13 @@
       "when": 1780172619562,
       "tag": "0006_mysterious_peter_quill",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780256400000,
+      "tag": "0007_delete_detached_source_pdfs",
+      "breakpoints": true
     }
   ]
 }

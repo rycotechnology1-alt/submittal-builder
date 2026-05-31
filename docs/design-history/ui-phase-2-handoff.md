@@ -96,7 +96,7 @@ that's where Phase 3 picks up). Visit
 
 ## Where to start
 
-[step-6-wireframes.md](step-6-wireframes.md) Screen 4 onward. The
+[wireframes.md](wireframes.md) Screen 4 onward. The
 package row's `<Link>` already aims at `/packages/[id]`, so the natural
 next slice is **Screen 4 — upload + processing**:
 

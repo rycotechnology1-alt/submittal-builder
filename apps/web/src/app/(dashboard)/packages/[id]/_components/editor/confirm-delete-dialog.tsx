@@ -29,8 +29,8 @@ export function ConfirmDeleteDialog({
         <DialogHeader>
           <DialogTitle>Delete item?</DialogTitle>
           <DialogDescription>
-            &ldquo;{itemTitle}&rdquo; will be removed from this package&apos;s table of contents.
-            Linked source PDFs stay in the package and can be reassigned later.
+            &ldquo;{itemTitle}&rdquo; and its linked source PDFs will be removed from this
+            package. Previous exports remain downloadable, but future exports will omit it.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

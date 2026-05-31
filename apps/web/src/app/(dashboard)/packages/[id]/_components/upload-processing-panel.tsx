@@ -249,8 +249,7 @@ export function UploadProcessingPanel({
           error: status.processing_error ?? row.error,
           canCancel: isCancelableProcessingStatus(status.processing_status),
           cancelPending: cancelingSourcePdfId === status.id,
-          canRemove:
-            status.processing_status === 'cancelled' || status.processing_status === 'error',
+          canRemove: true,
           removePending: removingSourcePdfId === status.id,
         };
       }),
@@ -277,7 +276,7 @@ export function UploadProcessingPanel({
         error: pdf.processing_error,
         canCancel: isCancelableProcessingStatus(pdf.processing_status),
         cancelPending: cancelingSourcePdfId === pdf.id,
-        canRemove: pdf.processing_status === 'cancelled' || pdf.processing_status === 'error',
+        canRemove: true,
         removePending: removingSourcePdfId === pdf.id,
       }));
   }, [cancelingSourcePdfId, removingSourcePdfId, rows, statusQuery.data]);

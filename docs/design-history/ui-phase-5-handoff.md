@@ -125,7 +125,7 @@ before adding new editor surface area; suggested checks:
 ## Where to start
 
 The natural next slice is **Screen 7 - Export** from
-[step-6-wireframes.md](step-6-wireframes.md) lines 329–411:
+[wireframes.md](wireframes.md) lines 329–411:
 
 - Wire the still-disabled `[Export package →]` toolbar button (at
   [package-editor.tsx](apps/web/src/app/(dashboard)/packages/[id]/_components/editor/package-editor.tsx))

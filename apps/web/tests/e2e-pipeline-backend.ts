@@ -211,8 +211,8 @@ async function main() {
   });
 
   const fixtures = [
-    path.join(repoRoot, 'spikes', 'fixtures', '01-daikin-vrv-cutsheet.pdf'),
-    path.join(repoRoot, 'spikes', 'fixtures', '02-hardie-warranty.pdf'),
+    path.join(__dirname, '__fixtures__', '01-daikin-vrv-cutsheet.pdf'),
+    path.join(__dirname, '__fixtures__', '02-hardie-warranty.pdf'),
   ];
 
   for (const fixture of fixtures) {

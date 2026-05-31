@@ -10,7 +10,7 @@
     "lint": "next lint --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "smoke:phase4": "tsx tests/e2e-phase4-backend.ts",
+    "smoke:pipeline": "tsx tests/e2e-pipeline-backend.ts",
     "smoke:e2e": "tsx tests/e2e-backend.ts"
   },
   "dependencies": {

@@ -13,11 +13,8 @@ import { deleteUserByEmail } from './helpers/test-db';
 
 const PASSWORD = 'phase-3-test-pass-1234';
 const FIXTURE_PDF = path.resolve(
-  process.cwd(),
-  '..',
-  '..',
-  'spikes',
-  'fixtures',
+  import.meta.dirname,
+  '__fixtures__',
   '01-daikin-vrv-cutsheet.pdf',
 );
 

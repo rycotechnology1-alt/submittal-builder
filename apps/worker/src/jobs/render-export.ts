@@ -180,6 +180,7 @@ export async function runRenderExportJob(deps: RenderExportDeps, data: RenderExp
         partNumber: string;
         label: string;
         sourcePage: number;
+        size: (typeof selectedVariants)[number]['size'];
         verificationStatus: (typeof selectedVariants)[number]['partNumberVerification'];
       }[]
     >();
@@ -197,6 +198,7 @@ export async function runRenderExportJob(deps: RenderExportDeps, data: RenderExp
         partNumber: variant.partNumber,
         label: variant.displayLabel,
         sourcePage: page?.pageNumber ?? 1,
+        size: variant.size,
         verificationStatus: variant.partNumberVerification,
       });
       calloutsBySourcePdf.set(targetPdfId, list);

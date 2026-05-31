@@ -24,12 +24,15 @@ Many spec sheets list one product across multiple trade sizes (and sometimes a s
 dimension such as schedule/type, packaging, or length), each with its own part number. Read these
 part-number tables directly from the page image — the underlying text layer is often column-
 misaligned, so trust what you see, not the raw text order. Emit one entry per distinct part number:
-- part_number: the exact SKU as printed, e.g. "V06BAA1"
+- part_number: the exact SKU as printed. Copy it character for character — every digit and
+  letter, preserving case, hyphens, and spacing. Do not normalize, reformat, or guess; a single
+  wrong character makes the SKU unorderable. Read digit groups carefully (e.g. do not confuse 8 and
+  9, 0 and 6). e.g. "V06BAA1"
 - size: the human trade size the buyer selects on, exactly as printed, e.g. 1/2", 3/4", 4 x 1
 - secondary_dims: optional { type?, packaging?, length? } that distinguishes part numbers sharing a
   size (e.g. type "Schedule 40" vs "Schedule 80", packaging "Coil" vs "Reel", length "10'" vs "20'").
   Omit the object entirely when the sheet has only one part number per size.
-- source_page: 1-based page the part number appears on
+- source_page: the 1-based page where this exact part number is printed
 Return an empty variants array when the sheet describes a single, non-sized product.
 
 Use null when a value is not present. source_page is 1-based. Call the extract_item tool exactly once.`;

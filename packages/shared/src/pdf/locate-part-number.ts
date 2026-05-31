@@ -53,7 +53,91 @@ function groupLines(glyphs: Glyph[]): Glyph[][] {
   return lines;
 }
 
-const normalize = (s: string) => s.replace(/\s+/g, '').toLowerCase();
+// Separators a SKU may differ on between the model's transcription and the page:
+// whitespace plus the hyphen/dash family (hyphen-minus, soft hyphen,
+// U+2010–U+2015, minus sign). Centralized so it is easy to widen later.
+const isSeparator = (ch: string) => /[\s-­‐-―−]/.test(ch);
+
+const normalize = (s: string) => {
+  let out = '';
+  for (const ch of s) if (!isSeparator(ch)) out += ch.toLowerCase();
+  return out;
+};
+
+/** Whitespace-stripped, lowercased trade size, e.g. "4 x 2" -> "4x2". Keeps
+ *  hyphens so sizes like "1-1/2" stay distinct. */
+const normalizeSize = (s: string) => s.replace(/\s+/g, '').toLowerCase();
+
+/** Bounded Levenshtein edit distance between two strings. */
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  let curr = new Array<number>(n + 1);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j]! + 1, curr[j - 1]! + 1, prev[j - 1]! + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n]!;
+}
+
+/** A part-number-shaped token: alphanumeric (+ hyphen), >=5 chars, has a digit
+ *  and no decimal point (so it never matches a dimension column like "5.938"). */
+function isSkuToken(token: string): boolean {
+  return /^[A-Za-z0-9-]{5,}$/.test(token) && /\d/.test(token);
+}
+
+/** Whitespace-separated tokens across a grouped line. */
+function lineTokens(line: Glyph[]): string[] {
+  return line.flatMap((g) => g.str.split(/\s+/)).filter(Boolean);
+}
+
+/** The single line whose text contains the normalized size token, or null when
+ *  the size is absent or matches more than one row (too ambiguous to trust). */
+function findSizeRow(lines: Glyph[][], sizeKey: string): Glyph[] | null {
+  const matches = lines.filter((line) =>
+    normalizeSize(line.map((g) => g.str).join('')).includes(sizeKey),
+  );
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+/** The part-number-shaped token on a line — the unique one, or (when several)
+ *  the one closest to the extracted SKU. Null when the line has none. */
+function recoverSkuFromLine(line: Glyph[], aiKey: string): string | null {
+  const skuTokens = lineTokens(line).filter(isSkuToken);
+  if (skuTokens.length === 0) return null;
+  if (skuTokens.length === 1 || !aiKey) return skuTokens[0]!;
+  return skuTokens
+    .map((t) => ({ t, d: levenshtein(normalize(t), aiKey) }))
+    .sort((a, b) => a.d - b.d)[0]!.t;
+}
+
+/** Whether the normalized target appears on any grouped line of the page. */
+function pageContainsKey(lines: Glyph[][], targetKey: string): boolean {
+  return lines.some((line) => matchInLine(line, targetKey) !== null);
+}
+
+/** The unique page SKU token within edit distance 1 of the extracted SKU, or
+ *  null when there is none or the nearest is ambiguous. Used as a last-resort
+ *  correction when the trade size can't anchor the row. */
+function nearestPageSku(lines: Glyph[][], aiKey: string): string | null {
+  if (!aiKey) return null;
+  const within = lines
+    .flatMap((line) => lineTokens(line))
+    .filter(isSkuToken)
+    .map((t) => ({ t, d: levenshtein(normalize(t), aiKey) }))
+    .filter((x) => x.d <= 1);
+  if (within.length === 0) return null;
+  const min = Math.min(...within.map((x) => x.d));
+  const best = new Set(within.filter((x) => x.d === min).map((x) => x.t));
+  return best.size === 1 ? [...best][0]! : null;
+}
 
 /**
  * Find the tight bounding box covering `target` within a single line, or null if
@@ -76,7 +160,7 @@ function matchInLine(line: Glyph[], target: string): Box | null {
   line.forEach((g, gi) => {
     for (let k = 0; k < g.str.length; k++) {
       const ch = g.str[k]!;
-      if (/\s/.test(ch)) continue;
+      if (isSeparator(ch)) continue;
       compact += ch.toLowerCase();
       refs.push({ gi, k });
     }
@@ -190,6 +274,53 @@ export async function locatePartNumber(
   }
 }
 
+export type LocateBySizeResult = {
+  /** The part number recovered from the matched size row's text layer. */
+  correctedPartNumber: string;
+  /** Bounding box of the recovered part number for highlighting. */
+  match: PartNumberMatch;
+};
+
+/**
+ * Recover a part number using its trade size as the anchor. Every SKU shares a
+ * text-layer line with its trade size, and size extraction is more reliable than
+ * part-number extraction — so when the extracted part number can't be located
+ * (e.g. an AI digit mis-read), the *uniquely* matching size row identifies the
+ * correct SKU. Returns null when the size is absent, ambiguous (matches more
+ * than one row), or the row carries no part-number-shaped token.
+ *
+ * `partNumber` is the (possibly wrong) extracted SKU, used only to disambiguate
+ * when a size row legitimately carries more than one SKU-shaped token.
+ */
+export async function locateBySize(
+  bytes: Uint8Array,
+  pageNumber: number,
+  target: { partNumber: string; size: string },
+): Promise<LocateBySizeResult | null> {
+  const sizeKey = normalizeSize(target.size);
+  if (!sizeKey) return null;
+
+  const doc = await openPdf(bytes);
+  try {
+    const extracted = await extractPageGlyphs(doc, pageNumber);
+    if (!extracted) return null;
+    const { glyphs, pageWidth, pageHeight } = extracted;
+
+    const line = findSizeRow(groupLines(glyphs), sizeKey);
+    if (!line) return null;
+    const chosen = recoverSkuFromLine(line, normalize(target.partNumber));
+    if (!chosen) return null;
+
+    const box = matchInLine(line, normalize(chosen));
+    if (!box || box.width <= 0) return null;
+    if (box.width > pageWidth * MAX_MATCH_WIDTH_FRACTION) return null;
+
+    return { correctedPartNumber: chosen, match: { ...box, pageWidth, pageHeight } };
+  } finally {
+    await doc.destroy();
+  }
+}
+
 /**
  * Whether a selected part number can be verified against the text actually
  * printed on its source page:
@@ -238,6 +369,85 @@ export async function verifyPartNumbers(
         (line) => matchInLine(line, normalized) !== null,
       );
       results.push(found ? 'found' : 'absent');
+    }
+    return results;
+  } finally {
+    await doc.destroy();
+  }
+}
+
+export type ReconcileTarget = {
+  partNumber: string;
+  /** Extracted trade size used to anchor the row, e.g. "4 x 2". */
+  size: string | null;
+  pageNumber: number;
+};
+
+export type ReconcileResult = {
+  status: VerificationStatus;
+  /** The reconciled part number — corrected when recovery succeeded, else the
+   *  original input value. */
+  partNumber: string;
+  /** Whether `partNumber` differs from the input (a correction was applied). */
+  corrected: boolean;
+};
+
+/**
+ * Verify each extracted part number against its source page and, when it can't
+ * be found, try to recover the correct SKU:
+ *   1. present on the page  -> `found`, unchanged
+ *   2. trade size anchors a unique row -> `found`, corrected to that row's SKU
+ *   3. a unique page token is within edit distance 1 -> `found`, corrected
+ *   4. otherwise -> `absent` (text layer) / `unverifiable` (no text), unchanged
+ *
+ * Opens the PDF once and extracts each referenced page a single time. Results
+ * are aligned by index to `targets`.
+ */
+export async function reconcilePartNumbers(
+  bytes: Uint8Array,
+  targets: ReconcileTarget[],
+): Promise<ReconcileResult[]> {
+  if (targets.length === 0) return [];
+
+  const doc = await openPdf(bytes);
+  try {
+    const pageCache = new Map<number, PageGlyphs | null>();
+    const getPage = async (pageNumber: number) => {
+      if (!pageCache.has(pageNumber)) {
+        pageCache.set(pageNumber, await extractPageGlyphs(doc, pageNumber));
+      }
+      return pageCache.get(pageNumber) ?? null;
+    };
+
+    const results: ReconcileResult[] = [];
+    for (const target of targets) {
+      const key = normalize(target.partNumber);
+      const page = await getPage(target.pageNumber);
+      if (!page || page.glyphs.length === 0) {
+        results.push({ status: 'unverifiable', partNumber: target.partNumber, corrected: false });
+        continue;
+      }
+
+      const lines = groupLines(page.glyphs);
+      if (key && pageContainsKey(lines, key)) {
+        results.push({ status: 'found', partNumber: target.partNumber, corrected: false });
+        continue;
+      }
+
+      const sizeKey = target.size ? normalizeSize(target.size) : '';
+      const row = sizeKey ? findSizeRow(lines, sizeKey) : null;
+      const recovered = row ? recoverSkuFromLine(row, key) : null;
+      const corrected = recovered ?? nearestPageSku(lines, key);
+      if (corrected) {
+        results.push({
+          status: 'found',
+          partNumber: corrected,
+          corrected: normalize(corrected) !== key,
+        });
+        continue;
+      }
+
+      results.push({ status: 'absent', partNumber: target.partNumber, corrected: false });
     }
     return results;
   } finally {

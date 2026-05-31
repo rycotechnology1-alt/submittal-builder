@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Db, SourcePdf } from '@submittal/db';
 import { schema } from '@submittal/db';
 import type { AppStorage } from '@submittal/shared/storage';
-import { renderPdfPageToWebp, verifyPartNumbers } from '@submittal/shared/pdf';
+import { renderPdfPageToWebp, reconcilePartNumbers } from '@submittal/shared/pdf';
 import { deriveVariantRows, type ExtractedVariant } from '@submittal/shared/ai';
 
 import {
@@ -37,8 +37,9 @@ type ExtractDeps = {
   storage: Pick<AppStorage, 'getObjectBytes'>;
   ai: ExtractAi;
   renderPageImages?: (input: { bytes: Uint8Array; pageNumbers: number[] }) => Promise<Uint8Array[]>;
-  /** Verify each extracted part number against its source page's text layer. */
-  verifyPartNumbers?: typeof verifyPartNumbers;
+  /** Verify each extracted part number against its source page and recover the
+   *  correct SKU (e.g. from the trade size) when it can't be located. */
+  reconcilePartNumbers?: typeof reconcilePartNumbers;
   enqueue?: (name: 'batch_order', data: SourcePdfJobData) => Promise<void>;
 };
 
@@ -98,7 +99,7 @@ async function replaceVariants(input: {
   variants: ExtractedVariant[];
   sourcePageByNumber: Map<number, string>;
   bytes: Uint8Array;
-  verify: typeof verifyPartNumbers;
+  reconcile: typeof reconcilePartNumbers;
 }) {
   // Re-extraction is authoritative: clear and rewrite the item's variant table.
   await input.db.delete(schema.itemVariants).where(eq(schema.itemVariants.itemId, input.itemId));
@@ -106,27 +107,28 @@ async function replaceVariants(input: {
   const rows = deriveVariantRows(input.variants);
   if (rows.length === 0) return;
 
-  // Verify each part number against its source page's text layer so a
-  // mis-extracted SKU is flagged for review rather than silently shipped.
-  let statuses: Awaited<ReturnType<typeof verifyPartNumbers>> = [];
+  // Verify each part number against its source page's text layer; when the
+  // extracted SKU can't be found, recover the correct one (e.g. via the trade
+  // size) so a mis-read digit is fixed rather than silently shipped.
+  let reconciled: Awaited<ReturnType<typeof reconcilePartNumbers>> = [];
   try {
-    statuses = await input.verify(
+    reconciled = await input.reconcile(
       input.bytes,
-      rows.map((row) => ({ partNumber: row.partNumber, pageNumber: row.sourcePage })),
+      rows.map((row) => ({ partNumber: row.partNumber, size: row.size, pageNumber: row.sourcePage })),
     );
   } catch {
-    statuses = [];
+    reconciled = [];
   }
 
   await input.db.insert(schema.itemVariants).values(
     rows.map((row, i) => ({
       itemId: input.itemId,
       sourcePageId: input.sourcePageByNumber.get(row.sourcePage) ?? null,
-      partNumber: row.partNumber,
+      partNumber: reconciled[i]?.partNumber ?? row.partNumber,
       size: row.size,
       secondaryDims: row.secondaryDims ?? null,
       displayLabel: row.displayLabel,
-      partNumberVerification: statuses[i] ?? null,
+      partNumberVerification: reconciled[i]?.status ?? null,
       sortOrder: row.sortOrder,
       isDefaultForSize: row.isDefaultForSize,
     })),
@@ -174,7 +176,7 @@ export async function runExtractJob(deps: ExtractDeps, data: SourcePdfJobData) {
       variants: extracted.variants ?? [],
       sourcePageByNumber,
       bytes,
-      verify: deps.verifyPartNumbers ?? verifyPartNumbers,
+      reconcile: deps.reconcilePartNumbers ?? reconcilePartNumbers,
     });
 
     await deps.db

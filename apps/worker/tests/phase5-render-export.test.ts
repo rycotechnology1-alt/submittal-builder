@@ -338,6 +338,7 @@ describe('Phase 5 render_export worker job', () => {
         partNumber: string;
         label: string;
         sourcePage: number;
+        size?: string | null;
         verificationStatus?: 'found' | 'absent' | 'unverifiable' | null;
       }[];
     };
@@ -362,8 +363,9 @@ describe('Phase 5 render_export worker job', () => {
     const source = captured[0]!;
     // TOC shows the submitted part number, not the full model-number list.
     expect(source.partNumber).toBe('V06BAA1');
+    // Only the selected 1/2" variant is forwarded — the unselected 3/8" is not.
     expect(source.selectedVariants).toEqual([
-      { partNumber: 'V06BAA1', label: '1/2"', sourcePage: 1, verificationStatus: null },
+      { partNumber: 'V06BAA1', label: '1/2"', sourcePage: 1, size: '1/2"', verificationStatus: null },
     ]);
   });
 

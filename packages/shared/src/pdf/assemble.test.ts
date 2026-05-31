@@ -339,7 +339,7 @@ describe('assembleSubmittalPdf', () => {
     expect(sourceText).toContain('V06ZZZ9');
   });
 
-  it('suppresses the fallback stamp for an absent (mis-extracted) part number', async () => {
+  it('stamps an un-locatable selected part number even when verification flagged it absent', async () => {
     const source = await makePartNumberPdf('5335967');
     const result = await assembleSubmittalPdf({
       cover: baseCover,
@@ -348,7 +348,8 @@ describe('assembleSubmittalPdf', () => {
           bytes: source,
           title: 'Base Spacer',
           itemId: 'item-1',
-          // Mis-extracted SKU (one digit off): not on a page that has text.
+          // Mis-extracted SKU (one digit off) with no size to anchor recovery:
+          // the user still selected it, so the page-1 fallback stamp must appear.
           selectedVariants: [
             { partNumber: '5335867', label: '4 x 2', sourcePage: 1, verificationStatus: 'absent' },
           ],
@@ -358,9 +359,46 @@ describe('assembleSubmittalPdf', () => {
 
     const parsed = await parsePdfPages(result.bytes);
     const sourceText = parsed.pages[2]!.text ?? '';
-    // A known-wrong number is neither located nor stamped.
+    expect(sourceText).toContain('SUBMITTED');
+    expect(sourceText).toContain('5335867');
+  });
+
+  it('highlights via the selected size when the part number was mis-extracted', async () => {
+    // The page lists SKUs beside their trade sizes. The selected variant's part
+    // number is wrong, but its size ("4 x 2") uniquely anchors the correct row,
+    // so the assembler highlights the located token instead of stamping.
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([612, 792]);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawText(FILLER, { x: 40, y: 720, size: 9, font });
+    page.drawText('5335971 4 x 1 80', { x: 60, y: 520, size: 12, font });
+    page.drawText('5335967 4 x 2 70', { x: 60, y: 500, size: 12, font });
+    const source = await doc.save();
+
+    const result = await assembleSubmittalPdf({
+      cover: baseCover,
+      sources: [
+        {
+          bytes: source,
+          title: 'Base Spacer',
+          itemId: 'item-1',
+          selectedVariants: [
+            {
+              partNumber: '5335867',
+              label: '4 x 2',
+              sourcePage: 1,
+              size: '4 x 2',
+              verificationStatus: 'absent',
+            },
+          ],
+        },
+      ],
+    });
+
+    const parsed = await parsePdfPages(result.bytes);
+    const sourceText = parsed.pages[2]!.text ?? '';
+    // Recovered via size ⇒ highlight only, no fallback stamp.
     expect(sourceText).not.toContain('SUBMITTED');
-    expect(sourceText).not.toContain('5335867');
   });
 
   it('still stamps an unverifiable part number (scanned page, no text layer)', async () => {

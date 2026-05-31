@@ -21,6 +21,7 @@ import type { PDFPage } from 'pdf-lib';
 
 import { buildHeaderLines } from './cover-format.js';
 import {
+  locateBySize,
   locatePartNumber,
   type PartNumberMatch,
   type VerificationStatus,
@@ -65,9 +66,15 @@ export type SelectedVariantCallout = {
   /** 1-based page within this source PDF where the part number appears. */
   sourcePage: number;
   /**
+   * Selected trade size, e.g. `4 x 2`. When the part number can't be located
+   * directly (e.g. an AI mis-read), the size anchors the correct row so the
+   * located token can still be highlighted.
+   */
+  size?: string | null;
+  /**
    * Whether this part number was verified against the source page's text layer.
-   * `absent` means a likely mis-extraction — when it also cannot be located we
-   * suppress the fallback stamp rather than print a known-wrong number.
+   * No longer gates the fallback stamp (a selected part number that can't be
+   * located is always stamped); retained for diagnostics.
    */
   verificationStatus?: VerificationStatus | null;
 };
@@ -619,18 +626,30 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
     for (const variant of s.selectedVariants) {
       const pageOffset = Math.min(Math.max(variant.sourcePage - 1, 0), s.pageCount - 1);
       const page = out.getPage(firstPageIndex + pageOffset);
-      let match = null;
+      let match: PartNumberMatch | null = null;
       try {
         match = await locatePartNumber(s.sourceBytes, pageOffset + 1, variant.partNumber);
       } catch {
         match = null;
       }
+      // Couldn't locate the SKU directly — fall back to the selected trade size,
+      // which anchors the correct row even when the part number was mis-read.
+      if (!match && variant.size) {
+        try {
+          const bySize = await locateBySize(s.sourceBytes, pageOffset + 1, {
+            partNumber: variant.partNumber,
+            size: variant.size,
+          });
+          if (bySize) match = bySize.match;
+        } catch {
+          // ignore — fall through to the stamp
+        }
+      }
       if (match) {
         drawPartNumberHighlight(page, match);
-      } else if (variant.verificationStatus !== 'absent') {
-        // Skip the stamp for a part number we know is missing from a text-bearing
-        // page (a likely mis-extraction the user was warned about); keep it for
-        // the genuine "scanned / no text layer" case.
+      } else {
+        // A selected part number that can't be located still gets the page-1
+        // stamp so the reviewer sees what was submitted.
         stampLines.push(`SUBMITTED — Part No. ${variant.partNumber} (${variant.label})`);
       }
     }

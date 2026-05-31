@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, degrees } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 
-import { locatePartNumber, verifyPartNumbers } from './locate-part-number.js';
+import { locateBySize, locatePartNumber, verifyPartNumbers } from './locate-part-number.js';
 
 async function pdfWithText(
   entries: { text: string; x: number; y: number }[],
@@ -119,5 +119,51 @@ describe('verifyPartNumbers', () => {
       { partNumber: 'AAA111', pageNumber: 2 },
     ]);
     expect(statuses).toEqual(['found', 'found', 'absent']);
+  });
+});
+
+describe('locateBySize', () => {
+  it('recovers the true SKU from the selected size row when the part number is mis-extracted', async () => {
+    // Each SKU shares a text-layer line with its trade size. The AI mis-read the
+    // SKU, but the size ("4 x 2") is correct and uniquely anchors the right row.
+    const bytes = await pdfWithText([
+      { text: '5335971 4 x 1 80', x: 60, y: 520 },
+      { text: '5335967 4 x 2 70', x: 60, y: 500 },
+      { text: '5335969 4 x 3 65', x: 60, y: 480 },
+    ]);
+    const result = await locateBySize(bytes, 1, { partNumber: '5335867', size: '4 x 2' });
+    expect(result).not.toBeNull();
+    expect(result!.correctedPartNumber).toBe('5335967');
+    expect(result!.match.width).toBeGreaterThan(0);
+  });
+
+  it('returns null when the selected size is not on the page', async () => {
+    const bytes = await pdfWithText([{ text: '5335967 4 x 2 70', x: 60, y: 500 }]);
+    expect(await locateBySize(bytes, 1, { partNumber: '5335867', size: '9 x 9' })).toBeNull();
+  });
+
+  it('returns null when the size matches more than one row (ambiguous)', async () => {
+    const bytes = await pdfWithText([
+      { text: '5335967 4 x 2 70', x: 60, y: 500 },
+      { text: '5335968 4 x 2 65', x: 60, y: 480 },
+    ]);
+    expect(await locateBySize(bytes, 1, { partNumber: '5335867', size: '4 x 2' })).toBeNull();
+  });
+});
+
+describe('separator-tolerant matching', () => {
+  it('locates a part number printed with a hyphen the extracted SKU omits', async () => {
+    const bytes = await pdfWithText([{ text: 'V06-BAA1', x: 200, y: 500 }]);
+    const match = await locatePartNumber(bytes, 1, 'V06BAA1');
+    expect(match).not.toBeNull();
+  });
+
+  it('verifies a part number printed with a hyphen the extracted SKU omits', async () => {
+    const bytes = await pdfWithText([
+      { text: 'Spec content here for text threshold', x: 40, y: 700 },
+      { text: 'V06-BAA1', x: 200, y: 500 },
+    ]);
+    const statuses = await verifyPartNumbers(bytes, [{ partNumber: 'V06BAA1', pageNumber: 1 }]);
+    expect(statuses).toEqual(['found']);
   });
 });

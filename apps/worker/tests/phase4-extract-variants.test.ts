@@ -59,21 +59,27 @@ async function seedClassifiedSource(label: string) {
   return { workspace: workspace!, pkg: pkg!, item: item!, sourcePdf: sourcePdf! };
 }
 
-type VerifyFn = (
+type ReconcileResult = {
+  status: 'found' | 'absent' | 'unverifiable';
+  partNumber: string;
+  corrected: boolean;
+};
+type ReconcileFn = (
   bytes: Uint8Array,
-  targets: { partNumber: string; pageNumber: number }[],
-) => Promise<('found' | 'absent' | 'unverifiable')[]>;
+  targets: { partNumber: string; size: string | null; pageNumber: number }[],
+) => Promise<ReconcileResult[]>;
 
 function makeDeps(
   extractResult: unknown,
-  verifyPartNumbers: VerifyFn = async (_bytes, targets) => targets.map(() => 'found'),
+  reconcilePartNumbers: ReconcileFn = async (_bytes, targets) =>
+    targets.map((t) => ({ status: 'found', partNumber: t.partNumber, corrected: false })),
 ) {
   return {
     db,
     storage: { getObjectBytes: async () => new Uint8Array([1]) },
     ai: { extractAttributes: async () => extractResult },
     renderPageImages: async () => [new Uint8Array([1])],
-    verifyPartNumbers,
+    reconcilePartNumbers,
     enqueue: async () => {},
   } as never;
 }
@@ -167,7 +173,11 @@ describe('Phase 4 extract job — variants', () => {
           ],
         },
         async (_bytes, targets) =>
-          targets.map((t) => (t.partNumber === '5335867' ? 'absent' : 'found')),
+          targets.map((t) => ({
+            status: t.partNumber === '5335867' ? 'absent' : 'found',
+            partNumber: t.partNumber,
+            corrected: false,
+          })),
       ),
       { workspaceId: workspace.id, packageId: pkg.id, sourcePdfId: sourcePdf.id },
     );
@@ -183,5 +193,39 @@ describe('Phase 4 extract job — variants', () => {
     );
     expect(byPart['5335967']).toBe('found');
     expect(byPart['5335867']).toBe('absent');
+  });
+
+  it('stores the corrected part number when reconciliation recovers it from the size', async () => {
+    const { workspace, pkg, item, sourcePdf } = await seedClassifiedSource('correct');
+    workspaceIds.push(workspace.id);
+
+    await runExtractJob(
+      makeDeps(
+        {
+          manufacturer: field('CANTEX'),
+          model_number: field('Base Spacer'),
+          description: field('Base spacer.'),
+          spec_section_ref: field(null),
+          // AI mis-read 5335967 as 5335867; the size "4 x 2" anchors recovery.
+          variants: [{ part_number: '5335867', size: '4 x 2', source_page: 1 }],
+        },
+        async (_bytes, targets) =>
+          targets.map((t) => ({
+            status: 'found',
+            partNumber: t.partNumber === '5335867' ? '5335967' : t.partNumber,
+            corrected: t.partNumber === '5335867',
+          })),
+      ),
+      { workspaceId: workspace.id, packageId: pkg.id, sourcePdfId: sourcePdf.id },
+    );
+
+    const variants = await db
+      .select()
+      .from(schema.itemVariants)
+      .where(eq(schema.itemVariants.itemId, item.id))
+      .orderBy(asc(schema.itemVariants.sortOrder));
+
+    expect(variants.map((v) => v.partNumber)).toEqual(['5335967']);
+    expect(variants[0]!.partNumberVerification).toBe('found');
   });
 });

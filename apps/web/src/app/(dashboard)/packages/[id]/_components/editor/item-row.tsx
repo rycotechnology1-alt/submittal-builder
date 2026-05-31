@@ -4,6 +4,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
   AlertTriangle,
+  BookmarkPlus,
   ChevronDown,
   ChevronUp,
   GripVertical,
@@ -17,6 +18,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
@@ -28,6 +30,7 @@ import { ConfirmDeleteDialog } from './confirm-delete-dialog';
 import { DocTypeMenu } from './doc-type-menu';
 import { DOC_TYPE_LABELS, type DocType } from './doc-types';
 import { itemNeedsReview } from './item-helpers';
+import { saveCommonDisabledReason } from './saved-items-helpers';
 import { SourcePdfList } from './source-pdf-list';
 
 type Attribute = PackageItemResponse['attributes'][number];
@@ -42,6 +45,7 @@ export function ItemRow({
   onSaveAttribute,
   onRevertAttribute,
   onDelete,
+  onSaveCommon,
   onOpenCitation,
   onRowFocus,
   rowIndex,
@@ -55,12 +59,19 @@ export function ItemRow({
   onSaveAttribute: (key: Attribute['key'], value: string | null) => void;
   onRevertAttribute: (key: Attribute['key']) => void;
   onDelete: () => Promise<void>;
+  onSaveCommon: () => void;
   onOpenCitation: (target: CitationTarget) => void;
   onRowFocus: (rowIndex: number) => void;
   rowIndex: number;
 }) {
-  const { attributes: dragAttrs, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: item.item.id, disabled: disabled || expanded });
+  const {
+    attributes: dragAttrs,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.item.id, disabled: disabled || expanded });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -86,8 +97,13 @@ export function ItemRow({
   const modelNumber = item.attributes.find((a) => a.key === 'model_number')?.current_value ?? null;
   const specSectionAttr =
     item.attributes.find((a) => a.key === 'spec_section_ref')?.current_value ?? null;
+  const saveCommonReason = saveCommonDisabledReason(item);
 
-  const summary = [manufacturer, modelNumber, `${item.source_pdfs.length} source PDF${item.source_pdfs.length === 1 ? '' : 's'}`]
+  const summary = [
+    manufacturer,
+    modelNumber,
+    `${item.source_pdfs.length} source PDF${item.source_pdfs.length === 1 ? '' : 's'}`,
+  ]
     .filter(Boolean)
     .join(' · ');
 
@@ -196,6 +212,15 @@ export function ItemRow({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
+                onSelect={onSaveCommon}
+                disabled={saveCommonReason !== null}
+                title={saveCommonReason ?? undefined}
+              >
+                <BookmarkPlus className="h-4 w-4" />
+                Save as common item
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
                 onSelect={() => setConfirmOpen(true)}
                 className="text-destructive focus:bg-destructive/10 focus:text-destructive"
               >
@@ -255,9 +280,7 @@ export function ItemRow({
             ))}
 
             <div className="grid grid-cols-[140px_1fr] items-start gap-3">
-              <label className="pt-2 text-sm font-medium text-muted-foreground">
-                Source PDFs
-              </label>
+              <label className="pt-2 text-sm font-medium text-muted-foreground">Source PDFs</label>
               <SourcePdfList sourcePdfs={item.source_pdfs} />
             </div>
 

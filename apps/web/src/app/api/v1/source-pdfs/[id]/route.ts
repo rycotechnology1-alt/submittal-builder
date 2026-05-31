@@ -111,7 +111,9 @@ export async function DELETE(req: Request, context: RouteContext<{ id: string }>
       });
     });
 
-    await bestEffortDeleteObjects([sourcePdf.storageKey]);
+    if (sourcePdf.savedItemFileId === null) {
+      await bestEffortDeleteObjects([sourcePdf.storageKey]);
+    }
     return noContent();
   });
 

@@ -30,12 +30,7 @@ import {
 // Enums
 // ---------------------------------------------------------------------------
 
-export const packageStatus = pgEnum('package_status', [
-  'draft',
-  'processing',
-  'ready',
-  'exported',
-]);
+export const packageStatus = pgEnum('package_status', ['draft', 'processing', 'ready', 'exported']);
 
 export const pdfProcessingStatus = pgEnum('pdf_processing_status', [
   'uploaded',
@@ -74,7 +69,9 @@ export const exportStatus = pgEnum('export_status', ['pending', 'rendering', 're
 // ---------------------------------------------------------------------------
 
 export const workspaces = pgTable('workspaces', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   name: text('name').notNull(),
   subCompanyName: text('sub_company_name').notNull(),
   subCompanyLogoStorageKey: text('sub_company_logo_storage_key'),
@@ -97,7 +94,9 @@ export const workspaces = pgTable('workspaces', {
 export const users = pgTable(
   'users',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
@@ -122,7 +121,9 @@ export const users = pgTable(
 export const sessions = pgTable(
   'sessions',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -143,7 +144,9 @@ export const sessions = pgTable(
 export const accounts = pgTable(
   'accounts',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -169,7 +172,9 @@ export const accounts = pgTable(
 export const verifications = pgTable(
   'verifications',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     identifier: text('identifier').notNull(),
     value: text('value').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
@@ -188,7 +193,9 @@ export const verifications = pgTable(
 export const projects = pgTable(
   'projects',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
@@ -208,7 +215,9 @@ export const projects = pgTable(
 export const packages = pgTable(
   'packages',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
@@ -241,7 +250,9 @@ export const packages = pgTable(
 export const sourcePdfs = pgTable(
   'source_pdfs',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     packageId: uuid('package_id')
       .notNull()
       .references(() => packages.id, { onDelete: 'cascade' }),
@@ -253,6 +264,9 @@ export const sourcePdfs = pgTable(
     byteSize: bigint('byte_size', { mode: 'number' }),
     sha256: text('sha256'),
     pageCount: integer('page_count'),
+    // Non-null when this package source reuses a durable saved-item blob.
+    // Delete flows must not remove storage for these rows.
+    savedItemFileId: uuid('saved_item_file_id'),
     processingStatus: pdfProcessingStatus('processing_status').notNull().default('uploaded'),
     processingError: text('processing_error'),
     // itemId FK declared after `items` is defined (see addendum below).
@@ -269,7 +283,9 @@ export const sourcePdfs = pgTable(
 export const sourcePages = pgTable(
   'source_pages',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     sourcePdfId: uuid('source_pdf_id')
       .notNull()
       .references(() => sourcePdfs.id, { onDelete: 'cascade' }),
@@ -287,13 +303,67 @@ export const sourcePages = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Workspace common/saved items
+// ---------------------------------------------------------------------------
+
+export const savedItemFiles = pgTable(
+  'saved_item_files',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    storageKey: text('storage_key').notNull(),
+    originalFilename: text('original_filename').notNull(),
+    byteSize: bigint('byte_size', { mode: 'number' }),
+    sha256: text('sha256').notNull(),
+    pageCount: integer('page_count'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    workspaceShaUnique: uniqueIndex('saved_item_files_workspace_sha_unique').on(
+      t.workspaceId,
+      t.sha256,
+    ),
+    workspaceIdx: index('saved_item_files_workspace_id_idx').on(t.workspaceId),
+  }),
+);
+
+export const savedItemSourcePages = pgTable(
+  'saved_item_source_pages',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    savedItemFileId: uuid('saved_item_file_id')
+      .notNull()
+      .references(() => savedItemFiles.id, { onDelete: 'cascade' }),
+    pageNumber: integer('page_number').notNull(),
+    ocrText: text('ocr_text'),
+    hasOcr: boolean('has_ocr').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    filePageUnique: uniqueIndex('saved_item_source_pages_file_page_unique').on(
+      t.savedItemFileId,
+      t.pageNumber,
+    ),
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // Items + attributes
 // ---------------------------------------------------------------------------
 
 export const items = pgTable(
   'items',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     packageId: uuid('package_id')
       .notNull()
       .references(() => packages.id, { onDelete: 'cascade' }),
@@ -317,7 +387,9 @@ export const items = pgTable(
 export const itemAttributes = pgTable(
   'item_attributes',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     itemId: uuid('item_id')
       .notNull()
       .references(() => items.id, { onDelete: 'cascade' }),
@@ -336,6 +408,63 @@ export const itemAttributes = pgTable(
     specSectionRefIdx: index('item_attributes_spec_section_ref_idx')
       .on(t.key)
       .where(sql`${t.key} = 'spec_section_ref'`),
+  }),
+);
+
+export const savedItems = pgTable(
+  'saved_items',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    savedItemFileId: uuid('saved_item_file_id')
+      .notNull()
+      .references(() => savedItemFiles.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    docType: itemDocType('doc_type').notNull().default('other'),
+    docTypeConfidence: doublePrecision('doc_type_confidence'),
+    docTypeOriginalAiValue: text('doc_type_original_ai_value'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    workspaceFileUnique: uniqueIndex('saved_items_workspace_file_unique').on(
+      t.workspaceId,
+      t.savedItemFileId,
+    ),
+    workspaceUpdatedIdx: index('saved_items_workspace_updated_idx').on(t.workspaceId, t.updatedAt),
+  }),
+);
+
+export const savedItemAttributes = pgTable(
+  'saved_item_attributes',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    savedItemId: uuid('saved_item_id')
+      .notNull()
+      .references(() => savedItems.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    currentValue: text('current_value'),
+    originalAiValue: text('original_ai_value'),
+    confidence: doublePrecision('confidence'),
+    savedItemSourcePageId: uuid('saved_item_source_page_id').references(
+      () => savedItemSourcePages.id,
+      { onDelete: 'set null' },
+    ),
+    editedByUserAt: timestamp('edited_by_user_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    savedItemKeyUnique: uniqueIndex('saved_item_attributes_item_key_unique').on(
+      t.savedItemId,
+      t.key,
+    ),
   }),
 );
 
@@ -364,7 +493,9 @@ export type PartNumberVerification = 'found' | 'absent' | 'unverifiable';
 export const itemVariants = pgTable(
   'item_variants',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     itemId: uuid('item_id')
       .notNull()
       .references(() => items.id, { onDelete: 'cascade' }),
@@ -392,6 +523,34 @@ export const itemVariants = pgTable(
   }),
 );
 
+export const savedItemVariants = pgTable(
+  'saved_item_variants',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    savedItemId: uuid('saved_item_id')
+      .notNull()
+      .references(() => savedItems.id, { onDelete: 'cascade' }),
+    savedItemSourcePageId: uuid('saved_item_source_page_id').references(
+      () => savedItemSourcePages.id,
+      { onDelete: 'set null' },
+    ),
+    partNumber: text('part_number').notNull(),
+    size: text('size').notNull(),
+    secondaryDims: jsonb('secondary_dims').$type<ItemVariantSecondaryDims>(),
+    displayLabel: text('display_label').notNull(),
+    partNumberVerification: text('part_number_verification').$type<PartNumberVerification>(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    isDefaultForSize: boolean('is_default_for_size').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    savedItemSortIdx: index('saved_item_variants_item_sort_idx').on(t.savedItemId, t.sortOrder),
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Exports + processing_jobs
 // ---------------------------------------------------------------------------
@@ -399,7 +558,9 @@ export const itemVariants = pgTable(
 export const exports = pgTable(
   'exports',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     packageId: uuid('package_id')
       .notNull()
       .references(() => packages.id, { onDelete: 'cascade' }),
@@ -424,7 +585,9 @@ export const exports = pgTable(
 export const processingJobs = pgTable(
   'processing_jobs',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     packageId: uuid('package_id')
       .notNull()
       .references(() => packages.id, { onDelete: 'cascade' }),
@@ -455,9 +618,14 @@ export type Project = typeof projects.$inferSelect;
 export type Package = typeof packages.$inferSelect;
 export type SourcePdf = typeof sourcePdfs.$inferSelect;
 export type SourcePage = typeof sourcePages.$inferSelect;
+export type SavedItemFile = typeof savedItemFiles.$inferSelect;
+export type SavedItemSourcePage = typeof savedItemSourcePages.$inferSelect;
 export type Item = typeof items.$inferSelect;
 export type ItemAttribute = typeof itemAttributes.$inferSelect;
 export type ItemVariant = typeof itemVariants.$inferSelect;
 export type NewItemVariant = typeof itemVariants.$inferInsert;
+export type SavedItem = typeof savedItems.$inferSelect;
+export type SavedItemAttribute = typeof savedItemAttributes.$inferSelect;
+export type SavedItemVariant = typeof savedItemVariants.$inferSelect;
 export type Export = typeof exports.$inferSelect;
 export type ProcessingJob = typeof processingJobs.$inferSelect;

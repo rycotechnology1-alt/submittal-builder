@@ -23,7 +23,6 @@ export default function PackageDetailPage() {
   const packageId = params.id;
   const searchParams = useSearchParams();
   const viewParam = searchParams.get('view');
-  const afterParam = searchParams.get('after');
 
   const packageQuery = useQuery({
     queryKey: ['package', packageId],
@@ -78,7 +77,6 @@ export default function PackageDetailPage() {
           packageId={pkg.id}
           packageStatus={pkg.status}
           sourcePdfCount={pkg.source_pdf_count}
-          autoProceedToSizes={afterParam === 'sizes'}
         />
       ) : view === 'sizes' ? (
         <SizeSelectionStep packageId={pkg.id} />
@@ -94,10 +92,7 @@ export default function PackageDetailPage() {
   );
 }
 
-function resolveView(
-  viewParam: string | null,
-  pkg: PackageDetailResponse,
-): PackageView {
+function resolveView(viewParam: string | null, pkg: PackageDetailResponse): PackageView {
   if (viewParam === 'upload') return 'upload';
   if (viewParam === 'sizes') return 'sizes';
   if (viewParam === 'assemble') return 'assemble';

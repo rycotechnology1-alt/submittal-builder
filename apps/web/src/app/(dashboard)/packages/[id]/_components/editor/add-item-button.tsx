@@ -9,10 +9,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ApiError, api } from '@/lib/api';
 import { putFileWithProgress } from '@/lib/upload';
-import type {
-  SourcePdfPresignRequest,
-  SourcePdfResponse,
-} from '@submittal/shared/api';
+import type { SourcePdfPresignRequest, SourcePdfResponse } from '@submittal/shared/api';
 
 import { MAX_PDF_BYTES, validateAddItemFile } from './add-item-helpers';
 
@@ -87,15 +84,15 @@ export function AddItemButton({
 
       queryClient.invalidateQueries({ queryKey: ['package', packageId] });
       queryClient.invalidateQueries({ queryKey: ['package-status', packageId] });
-      router.push(`${pathname}?view=upload&after=sizes`);
+      router.push(`${pathname}?view=upload`);
       toast.success('Processing started. Your new item will appear when classification finishes.');
     } catch (err) {
       toast.error(
         err instanceof ApiError
           ? err.message
           : err instanceof Error
-          ? err.message
-          : 'Could not add item.',
+            ? err.message
+            : 'Could not add item.',
       );
     } finally {
       setStage('idle');

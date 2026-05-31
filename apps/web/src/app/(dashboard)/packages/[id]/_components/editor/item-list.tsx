@@ -33,6 +33,7 @@ export function ItemList({
   onSaveAttribute,
   onRevertAttribute,
   onDelete,
+  onSaveCommon,
   onReorder,
   onOpenCitation,
   onRowFocus,
@@ -46,6 +47,7 @@ export function ItemList({
   onSaveAttribute: (itemId: string, key: Attribute['key'], value: string | null) => void;
   onRevertAttribute: (itemId: string, key: Attribute['key']) => void;
   onDelete: (itemId: string) => Promise<void>;
+  onSaveCommon: (itemId: string) => void;
   onReorder: (fromId: string, toId: string) => void;
   onOpenCitation: (target: CitationTarget) => void;
   onRowFocus: (rowIndex: number) => void;
@@ -68,10 +70,7 @@ export function ItemList({
       modifiers={[restrictToVerticalAxis]}
       onDragEnd={handleDragEnd}
     >
-      <SortableContext
-        items={items.map((i) => i.item.id)}
-        strategy={verticalListSortingStrategy}
-      >
+      <SortableContext items={items.map((i) => i.item.id)} strategy={verticalListSortingStrategy}>
         <ul className="space-y-2">
           {items.map((item, index) => (
             <li key={item.item.id}>
@@ -86,6 +85,7 @@ export function ItemList({
                 onSaveAttribute={(key, value) => onSaveAttribute(item.item.id, key, value)}
                 onRevertAttribute={(key) => onRevertAttribute(item.item.id, key)}
                 onDelete={() => onDelete(item.item.id)}
+                onSaveCommon={() => onSaveCommon(item.item.id)}
                 onOpenCitation={onOpenCitation}
                 onRowFocus={onRowFocus}
               />

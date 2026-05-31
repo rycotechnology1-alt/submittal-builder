@@ -12,6 +12,17 @@ import {
   validateBatesPrefix,
 } from '@/app/(dashboard)/packages/[id]/_components/editor/export-helpers';
 
+const sourcePdf = (
+  overrides: Partial<PackageItemResponse['source_pdfs'][number]> = {},
+): PackageItemResponse['source_pdfs'][number] => ({
+  id: 'pdf-1',
+  original_filename: 'a.pdf',
+  page_count: 10,
+  processing_status: 'extracted',
+  sha256: 'a'.repeat(64),
+  ...overrides,
+});
+
 const baseItem = (overrides: Partial<PackageItemResponse> = {}): PackageItemResponse => ({
   item: {
     id: overrides.item?.id ?? 'item-1',
@@ -26,13 +37,32 @@ const baseItem = (overrides: Partial<PackageItemResponse> = {}): PackageItemResp
     ...(overrides.item ?? {}),
   },
   attributes: overrides.attributes ?? [
-    { key: 'manufacturer', current_value: 'Acme', original_ai_value: 'Acme', confidence: 0.95, source_page_id: null, edited_by_user_at: null },
-    { key: 'model_number', current_value: 'AC-1', original_ai_value: 'AC-1', confidence: 0.95, source_page_id: null, edited_by_user_at: null },
-    { key: 'description', current_value: 'desc', original_ai_value: 'desc', confidence: 0.95, source_page_id: null, edited_by_user_at: null },
+    {
+      key: 'manufacturer',
+      current_value: 'Acme',
+      original_ai_value: 'Acme',
+      confidence: 0.95,
+      source_page_id: null,
+      edited_by_user_at: null,
+    },
+    {
+      key: 'model_number',
+      current_value: 'AC-1',
+      original_ai_value: 'AC-1',
+      confidence: 0.95,
+      source_page_id: null,
+      edited_by_user_at: null,
+    },
+    {
+      key: 'description',
+      current_value: 'desc',
+      original_ai_value: 'desc',
+      confidence: 0.95,
+      source_page_id: null,
+      edited_by_user_at: null,
+    },
   ],
-  source_pdfs: overrides.source_pdfs ?? [
-    { id: 'pdf-1', original_filename: 'a.pdf', page_count: 10 },
-  ],
+  source_pdfs: overrides.source_pdfs ?? [sourcePdf()],
   variants: overrides.variants ?? [],
   selected_part_numbers: overrides.selected_part_numbers ?? [],
 });
@@ -64,9 +94,30 @@ describe('computeExportBlockers', () => {
     const items = [
       baseItem({
         attributes: [
-          { key: 'manufacturer', current_value: 'Acme', original_ai_value: 'Acme', confidence: 0.3, source_page_id: null, edited_by_user_at: null },
-          { key: 'model_number', current_value: 'AC-1', original_ai_value: 'AC-1', confidence: 0.95, source_page_id: null, edited_by_user_at: null },
-          { key: 'description', current_value: 'desc', original_ai_value: 'desc', confidence: 0.95, source_page_id: null, edited_by_user_at: null },
+          {
+            key: 'manufacturer',
+            current_value: 'Acme',
+            original_ai_value: 'Acme',
+            confidence: 0.3,
+            source_page_id: null,
+            edited_by_user_at: null,
+          },
+          {
+            key: 'model_number',
+            current_value: 'AC-1',
+            original_ai_value: 'AC-1',
+            confidence: 0.95,
+            source_page_id: null,
+            edited_by_user_at: null,
+          },
+          {
+            key: 'description',
+            current_value: 'desc',
+            original_ai_value: 'desc',
+            confidence: 0.95,
+            source_page_id: null,
+            edited_by_user_at: null,
+          },
         ],
       }),
     ];
@@ -81,9 +132,30 @@ describe('computeExportBlockers', () => {
     const items = [
       baseItem({
         attributes: [
-          { key: 'manufacturer', current_value: 'Acme', original_ai_value: 'Acme', confidence: 0.3, source_page_id: null, edited_by_user_at: '2026-01-02T00:00:00.000Z' },
-          { key: 'model_number', current_value: 'AC-1', original_ai_value: 'AC-1', confidence: 0.95, source_page_id: null, edited_by_user_at: null },
-          { key: 'description', current_value: 'desc', original_ai_value: 'desc', confidence: 0.95, source_page_id: null, edited_by_user_at: null },
+          {
+            key: 'manufacturer',
+            current_value: 'Acme',
+            original_ai_value: 'Acme',
+            confidence: 0.3,
+            source_page_id: null,
+            edited_by_user_at: '2026-01-02T00:00:00.000Z',
+          },
+          {
+            key: 'model_number',
+            current_value: 'AC-1',
+            original_ai_value: 'AC-1',
+            confidence: 0.95,
+            source_page_id: null,
+            edited_by_user_at: null,
+          },
+          {
+            key: 'description',
+            current_value: 'desc',
+            original_ai_value: 'desc',
+            confidence: 0.95,
+            source_page_id: null,
+            edited_by_user_at: null,
+          },
         ],
       }),
     ];
@@ -95,7 +167,14 @@ describe('computeExportBlockers', () => {
     const items = [
       baseItem({
         attributes: [
-          { key: 'manufacturer', current_value: 'Acme', original_ai_value: 'Acme', confidence: 0.95, source_page_id: null, edited_by_user_at: null },
+          {
+            key: 'manufacturer',
+            current_value: 'Acme',
+            original_ai_value: 'Acme',
+            confidence: 0.95,
+            source_page_id: null,
+            edited_by_user_at: null,
+          },
         ],
       }),
     ];
@@ -115,14 +194,21 @@ describe('computeExportBlockers', () => {
 describe('summarizeExport', () => {
   test('counts items and source pages', () => {
     const items = [
-      baseItem({ item: { id: 'a' } as PackageItemResponse['item'], source_pdfs: [{ id: 'pdf-1', original_filename: 'a.pdf', page_count: 10 }] }),
-      baseItem({ item: { id: 'b' } as PackageItemResponse['item'], source_pdfs: [{ id: 'pdf-2', original_filename: 'b.pdf', page_count: 5 }] }),
+      baseItem({ item: { id: 'a' } as PackageItemResponse['item'], source_pdfs: [sourcePdf()] }),
+      baseItem({
+        item: { id: 'b' } as PackageItemResponse['item'],
+        source_pdfs: [sourcePdf({ id: 'pdf-2', original_filename: 'b.pdf', page_count: 5 })],
+      }),
     ];
     expect(summarizeExport(items)).toEqual({ itemCount: 2, sourcePageCount: 15 });
   });
 
   test('dedupes pages from source PDFs referenced by multiple items', () => {
-    const shared = { id: 'pdf-shared', original_filename: 'shared.pdf', page_count: 8 };
+    const shared = sourcePdf({
+      id: 'pdf-shared',
+      original_filename: 'shared.pdf',
+      page_count: 8,
+    });
     const items = [
       baseItem({ item: { id: 'a' } as PackageItemResponse['item'], source_pdfs: [shared] }),
       baseItem({ item: { id: 'b' } as PackageItemResponse['item'], source_pdfs: [shared] }),
@@ -132,7 +218,9 @@ describe('summarizeExport', () => {
 
   test('treats null page_count as zero', () => {
     const items = [
-      baseItem({ source_pdfs: [{ id: 'p', original_filename: 'p.pdf', page_count: null }] }),
+      baseItem({
+        source_pdfs: [sourcePdf({ id: 'p', original_filename: 'p.pdf', page_count: null })],
+      }),
     ];
     expect(summarizeExport(items).sourcePageCount).toBe(0);
   });
@@ -140,11 +228,16 @@ describe('summarizeExport', () => {
 
 describe('defaultBatesPrefix', () => {
   test('joins submittal and revision with sanitized characters', () => {
-    expect(defaultBatesPrefix({ submittal_number: '09 51 13-002', revision: 'R1' })).toBe('09-51-13-002-R1-');
+    expect(defaultBatesPrefix({ submittal_number: '09 51 13-002', revision: 'R1' })).toBe(
+      '09-51-13-002-R1-',
+    );
   });
 
   test('respects the 16-character cap', () => {
-    const out = defaultBatesPrefix({ submittal_number: 'very-long-submittal-number', revision: 'R99' });
+    const out = defaultBatesPrefix({
+      submittal_number: 'very-long-submittal-number',
+      revision: 'R99',
+    });
     expect(out.length).toBeLessThanOrEqual(BATES_PREFIX_MAX_LENGTH);
     expect(out.endsWith('-')).toBe(true);
   });

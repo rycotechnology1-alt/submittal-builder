@@ -58,7 +58,11 @@ export async function DELETE(req: Request, context: RouteContext<{ id: string }>
     if (!item) return notFound();
 
     const linkedSourcePdfs = await db
-      .select({ id: schema.sourcePdfs.id, storageKey: schema.sourcePdfs.storageKey })
+      .select({
+        id: schema.sourcePdfs.id,
+        storageKey: schema.sourcePdfs.storageKey,
+        savedItemFileId: schema.sourcePdfs.savedItemFileId,
+      })
       .from(schema.sourcePdfs)
       .where(
         and(
@@ -67,7 +71,9 @@ export async function DELETE(req: Request, context: RouteContext<{ id: string }>
         ),
       );
     const linkedSourcePdfIds = linkedSourcePdfs.map((pdf) => pdf.id);
-    const storageKeys = linkedSourcePdfs.map((pdf) => pdf.storageKey);
+    const storageKeys = linkedSourcePdfs
+      .filter((pdf) => pdf.savedItemFileId === null)
+      .map((pdf) => pdf.storageKey);
 
     await db.transaction(async (tx) => {
       if (linkedSourcePdfIds.length > 0) {

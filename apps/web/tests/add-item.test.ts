@@ -84,9 +84,7 @@ describe('validateAddItemFile', () => {
   });
 
   test('rejects non-PDF content type and extension', () => {
-    const rejection = validateAddItemFile(
-      makeFile({ name: 'image.png', type: 'image/png' }),
-    );
+    const rejection = validateAddItemFile(makeFile({ name: 'image.png', type: 'image/png' }));
     expect(rejection?.kind).toBe('invalid_type');
   });
 
@@ -122,14 +120,14 @@ describe('shouldAutoProceedToSizeSelection', () => {
     ).toBe(false);
   });
 
-  test('returns true once observed processing rows are all extracted', () => {
+  test('does not proceed once observed processing rows are all extracted', () => {
     expect(
       shouldAutoProceedToSizeSelection({
         autoProceedToSizes: true,
         hasObservedProcessing: true,
         rows: [{ processingStatus: 'extracted' }, { processingStatus: 'extracted' }],
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   test('does not proceed for only errored or cancelled rows', () => {

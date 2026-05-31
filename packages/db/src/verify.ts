@@ -28,6 +28,12 @@ const expected = [
   'source_pages',
   'items',
   'item_attributes',
+  'item_variants',
+  'saved_item_files',
+  'saved_item_source_pages',
+  'saved_items',
+  'saved_item_attributes',
+  'saved_item_variants',
   'exports',
   'processing_jobs',
 ];

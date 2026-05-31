@@ -7,6 +7,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, api } from '@/lib/api';
 import type {
@@ -14,6 +22,7 @@ import type {
   PackageDetailResponse,
   PackageItemResponse,
   ProjectResponse,
+  SaveCommonItemResponse,
 } from '@submittal/shared/api';
 
 import { AddItemButton } from './add-item-button';
@@ -47,12 +56,12 @@ export function PackageEditor({
   const [citationTarget, setCitationTarget] = useState<CitationTarget | null>(null);
   const [coverSheetOpen, setCoverSheetOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [duplicateSaveItemId, setDuplicateSaveItemId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewExportId, setPreviewExportId] = useState<string | null>(null);
 
   const latestExport = pkg.latest_export;
-  const latestReadyExport =
-    latestExport && latestExport.status === 'ready' ? latestExport : null;
+  const latestReadyExport = latestExport && latestExport.status === 'ready' ? latestExport : null;
 
   useEffect(() => {
     if (!latestReadyExport) {
@@ -84,8 +93,7 @@ export function PackageEditor({
 
   const itemsQuery = useQuery({
     queryKey: itemsKey(packageId),
-    queryFn: () =>
-      api.get<PackageItemResponse[]>(`/api/v1/packages/${packageId}/items`),
+    queryFn: () => api.get<PackageItemResponse[]>(`/api/v1/packages/${packageId}/items`),
   });
 
   const items = itemsQuery.data ?? [];
@@ -93,9 +101,7 @@ export function PackageEditor({
 
   const setItemsCache = useCallback(
     (updater: (prev: ItemsQueryData) => ItemsQueryData) => {
-      queryClient.setQueryData<ItemsQueryData>(itemsKey(packageId), (prev) =>
-        updater(prev ?? []),
-      );
+      queryClient.setQueryData<ItemsQueryData>(itemsKey(packageId), (prev) => updater(prev ?? []));
     },
     [packageId, queryClient],
   );
@@ -175,8 +181,7 @@ export function PackageEditor({
       itemId: string;
       key: Attribute['key'];
       value: string | null;
-    }) =>
-      api.put<Attribute>(`/api/v1/items/${itemId}/attributes/${key}`, { value }),
+    }) => api.put<Attribute>(`/api/v1/items/${itemId}/attributes/${key}`, { value }),
   });
 
   function saveAttribute(itemId: string, key: Attribute['key'], value: string | null) {
@@ -209,10 +214,7 @@ export function PackageEditor({
               row.item.id === itemId
                 ? {
                     ...row,
-                    attributes: [
-                      ...row.attributes.filter((a) => a.key !== key),
-                      updated,
-                    ],
+                    attributes: [...row.attributes.filter((a) => a.key !== key), updated],
                   }
                 : row,
             ),
@@ -256,10 +258,7 @@ export function PackageEditor({
               row.item.id === itemId
                 ? {
                     ...row,
-                    attributes: [
-                      ...row.attributes.filter((a) => a.key !== key),
-                      updated,
-                    ],
+                    attributes: [...row.attributes.filter((a) => a.key !== key), updated],
                   }
                 : row,
             ),
@@ -316,6 +315,35 @@ export function PackageEditor({
     });
   }
 
+  const saveCommonMutation = useMutation({
+    mutationFn: ({
+      itemId,
+      duplicateAction,
+    }: {
+      itemId: string;
+      duplicateAction?: 'update' | 'keep_existing';
+    }) =>
+      api.post<SaveCommonItemResponse>(`/api/v1/items/${itemId}/save-common`, {
+        ...(duplicateAction ? { duplicate_action: duplicateAction } : {}),
+      }),
+    onSuccess: (_data, variables) => {
+      setDuplicateSaveItemId(null);
+      toast.success(variables.duplicateAction === 'update' ? 'Saved item updated' : 'Item saved');
+      queryClient.invalidateQueries({ queryKey: ['saved-items'] });
+    },
+    onError: (error, variables) => {
+      if (error instanceof ApiError && error.code === 'saved_item_already_exists') {
+        setDuplicateSaveItemId(variables.itemId);
+        return;
+      }
+      notify(error, 'Could not save common item.');
+    },
+  });
+
+  function saveCommon(itemId: string) {
+    saveCommonMutation.mutate({ itemId });
+  }
+
   // --- keyboard ------------------------------------------------------------
 
   const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
@@ -325,9 +353,7 @@ export function PackageEditor({
       if (citationTarget) return;
       const target = e.target as HTMLElement;
       const insideInput =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable;
+        target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       if (insideInput) return;
       if (items.length === 0) return;
 
@@ -398,17 +424,13 @@ export function PackageEditor({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => router.push(`${pathname}?view=upload&after=sizes`)}
+              onClick={() => router.push(`${pathname}?view=upload`)}
             >
               <Plus className="h-4 w-4" />
               Add Bulk Items
             </Button>
             <AddItemButton packageId={packageId} />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCoverSheetOpen(true)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setCoverSheetOpen(true)}>
               Cover sheet
             </Button>
             <Button
@@ -436,6 +458,7 @@ export function PackageEditor({
             onSaveAttribute={saveAttribute}
             onRevertAttribute={revertAttribute}
             onDelete={deleteItem}
+            onSaveCommon={saveCommon}
             onReorder={reorderItems}
             onOpenCitation={setCitationTarget}
             onRowFocus={setFocusedRowIndex}
@@ -445,11 +468,7 @@ export function PackageEditor({
         <section className="mt-8">
           <h3 className="text-sm font-medium text-muted-foreground">Package preview</h3>
           <div className="mt-3 flex justify-center rounded-lg border bg-muted/30 p-4">
-            {latestReadyExport ? (
-              <PdfPreview url={previewUrl} />
-            ) : (
-              <PreviewEmptyState />
-            )}
+            {latestReadyExport ? <PdfPreview url={previewUrl} /> : <PreviewEmptyState />}
           </div>
         </section>
       </main>
@@ -468,6 +487,44 @@ export function PackageEditor({
         project={project}
         items={items}
       />
+      <Dialog
+        open={duplicateSaveItemId !== null}
+        onOpenChange={(open) => {
+          if (!open && !saveCommonMutation.isPending) setDuplicateSaveItemId(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update saved item?</DialogTitle>
+            <DialogDescription>
+              This PDF is already saved in the workspace library.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDuplicateSaveItemId(null)}
+              disabled={saveCommonMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={saveCommonMutation.isPending || duplicateSaveItemId === null}
+              onClick={() => {
+                if (!duplicateSaveItemId) return;
+                saveCommonMutation.mutate({
+                  itemId: duplicateSaveItemId,
+                  duplicateAction: 'update',
+                });
+              }}
+            >
+              Update saved item
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

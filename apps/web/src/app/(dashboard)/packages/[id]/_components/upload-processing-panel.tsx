@@ -1,7 +1,15 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRight, FileUp, RefreshCw, UploadCloud, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  FileUp,
+  Library,
+  RefreshCw,
+  UploadCloud,
+  XCircle,
+} from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -22,7 +30,7 @@ import {
   isCancelableProcessingStatus,
   isTerminalProcessingStatus,
 } from './processing-status';
-import { shouldAutoProceedToSizeSelection } from './upload-processing-helpers';
+import { SavedItemsDrawer } from './saved-items-drawer';
 
 type PresignResponse = {
   source_pdf_id: string;
@@ -41,15 +49,12 @@ export function UploadProcessingPanel({
   packageId,
   packageStatus,
   sourcePdfCount,
-  autoProceedToSizes = false,
 }: {
   packageId: string;
   packageStatus: PackageDetailResponse['status'];
   sourcePdfCount: number;
-  autoProceedToSizes?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const hasObservedAutoProcessingRef = useRef(false);
   const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
@@ -58,6 +63,7 @@ export function UploadProcessingPanel({
   const [processingRequested, setProcessingRequested] = useState(packageStatus === 'processing');
   const [cancelingSourcePdfId, setCancelingSourcePdfId] = useState<string | null>(null);
   const [removingSourcePdfId, setRemovingSourcePdfId] = useState<string | null>(null);
+  const [savedDrawerOpen, setSavedDrawerOpen] = useState(false);
 
   const shouldPoll = useMemo(() => {
     if (packageStatus === 'processing' || processingRequested) return true;
@@ -79,7 +85,8 @@ export function UploadProcessingPanel({
   });
 
   const processMutation = useMutation({
-    mutationFn: () => api.post<{ status: 'processing' }>(`/api/v1/packages/${packageId}/process`, {}),
+    mutationFn: () =>
+      api.post<{ status: 'processing' }>(`/api/v1/packages/${packageId}/process`, {}),
     onSuccess: () => {
       setProcessingRequested(true);
       queryClient.invalidateQueries({ queryKey: ['package', packageId] });
@@ -108,8 +115,7 @@ export function UploadProcessingPanel({
   });
 
   const removeSourcePdfMutation = useMutation({
-    mutationFn: (sourcePdfId: string) =>
-      api.delete<void>(`/api/v1/source-pdfs/${sourcePdfId}`),
+    mutationFn: (sourcePdfId: string) => api.delete<void>(`/api/v1/source-pdfs/${sourcePdfId}`),
     onMutate: (sourcePdfId) => {
       setRemovingSourcePdfId(sourcePdfId);
     },
@@ -292,25 +298,6 @@ export function UploadProcessingPanel({
     proceedableRows.length > 0 &&
     proceedableRows.every((row) => row.processingStatus === 'extracted');
 
-  useEffect(() => {
-    if (!autoProceedToSizes) return;
-    if (packageStatus === 'processing' || processingRequested || statusData?.has_active_processing) {
-      hasObservedAutoProcessingRef.current = true;
-    }
-  }, [autoProceedToSizes, packageStatus, processingRequested, statusData?.has_active_processing]);
-
-  useEffect(() => {
-    if (
-      shouldAutoProceedToSizeSelection({
-        autoProceedToSizes,
-        hasObservedProcessing: hasObservedAutoProcessingRef.current,
-        rows: allRows,
-      })
-    ) {
-      router.replace(`${pathname}?view=sizes`);
-    }
-  }, [allRows, autoProceedToSizes, pathname, router]);
-
   function proceedToPackage() {
     // Route through the size-selection step; it forwards to the editor when no
     // multi-variant documents need a size chosen.
@@ -366,10 +353,14 @@ export function UploadProcessingPanel({
         <UploadCloud className="h-10 w-10 text-muted-foreground" />
         <h2 className="mt-4 text-lg font-semibold tracking-tight">Drop PDFs here</h2>
         <p className="mt-1 text-sm text-muted-foreground">Up to 20 files, 50 MB each.</p>
-        <div className="mt-5">
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
           <Button type="button" onClick={() => inputRef.current?.click()}>
             <FileUp className="h-4 w-4" />
             Browse files
+          </Button>
+          <Button type="button" variant="outline" onClick={() => setSavedDrawerOpen(true)}>
+            <Library className="h-4 w-4" />
+            Add from saved
           </Button>
           <input
             ref={inputRef}
@@ -384,6 +375,12 @@ export function UploadProcessingPanel({
           />
         </div>
       </div>
+
+      <SavedItemsDrawer
+        packageId={packageId}
+        open={savedDrawerOpen}
+        onOpenChange={setSavedDrawerOpen}
+      />
 
       <div className="mt-8">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

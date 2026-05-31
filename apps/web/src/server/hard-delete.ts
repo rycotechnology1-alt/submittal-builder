@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 import { db, schema } from '@/server/db';
 import { getStorage } from '@/server/storage';
@@ -17,6 +17,7 @@ export async function collectPackageStorageKeys(
         and(
           eq(schema.sourcePdfs.packageId, packageId),
           eq(schema.sourcePdfs.workspaceId, workspaceId),
+          isNull(schema.sourcePdfs.savedItemFileId),
         ),
       ),
     db
@@ -77,9 +78,7 @@ export async function updatePackageStatusAfterContentRemoval(
 
     if (sourcePdfs.length === 0) {
       nextStatus = 'draft';
-    } else if (
-      sourcePdfs.every((pdf) => pdf.itemId && pdf.processingStatus === 'extracted')
-    ) {
+    } else if (sourcePdfs.every((pdf) => pdf.itemId && pdf.processingStatus === 'extracted')) {
       nextStatus = 'ready';
     }
   }

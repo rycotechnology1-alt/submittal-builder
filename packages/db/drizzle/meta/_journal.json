@@ -57,6 +57,13 @@
       "when": 1780256400000,
       "tag": "0007_delete_detached_source_pdfs",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780263000000,
+      "tag": "0008_common_saved_items",
+      "breakpoints": true
     }
   ]
 }

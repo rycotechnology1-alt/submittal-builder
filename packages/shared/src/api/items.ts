@@ -44,6 +44,19 @@ export const itemSourcePdfSchema = z.object({
   id: uuidSchema,
   original_filename: z.string(),
   page_count: z.number().int().nullable(),
+  processing_status: z.enum([
+    'uploaded',
+    'ocr_running',
+    'classifying',
+    'extracting',
+    'extracted',
+    'error',
+    'cancelled',
+  ]),
+  sha256: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/i)
+    .nullable(),
 });
 
 export const itemVariantSecondaryDimsSchema = z.object({

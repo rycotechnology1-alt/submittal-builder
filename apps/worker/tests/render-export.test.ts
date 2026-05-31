@@ -182,7 +182,7 @@ describe('Phase 5 render_export worker job', () => {
     expect(job!.status).toBe('succeeded');
   });
 
-  it('passes each item\'s extracted attributes to the assembler for the TOC', async () => {
+  it("passes each item's extracted attributes to the assembler for the TOC", async () => {
     const { workspace, creator, pkg } = await seedReadyPackage('attrs');
     workspaceIds.push(workspace.id);
 
@@ -197,7 +197,11 @@ describe('Phase 5 render_export worker job', () => {
       })
       .returning();
     await db.insert(schema.itemAttributes).values([
-      { itemId: item!.id, key: 'description', currentValue: 'Rigid galvanized steel conduit, 3/4 in.' },
+      {
+        itemId: item!.id,
+        key: 'description',
+        currentValue: 'Rigid galvanized steel conduit, 3/4 in.',
+      },
       { itemId: item!.id, key: 'model_number', currentValue: 'RGS-075' },
       { itemId: item!.id, key: 'manufacturer', currentValue: 'Allied Tube' },
     ]);
@@ -231,8 +235,16 @@ describe('Phase 5 render_export worker job', () => {
     const storage = new FakeStorage();
     storage.objects.set(sourcePdf!.storageKey, pdfBytes);
 
-    const captured: { sources: { title: string; description?: string | null; partNumber?: string | null; manufacturer?: string | null; itemId?: string }[] }[] = [];
-    const fakeAssemble = async (input: { sources: typeof captured[number]['sources'] }) => {
+    const captured: {
+      sources: {
+        title: string;
+        description?: string | null;
+        partNumber?: string | null;
+        manufacturer?: string | null;
+        itemId?: string;
+      }[];
+    }[] = [];
+    const fakeAssemble = async (input: { sources: (typeof captured)[number]['sources'] }) => {
       captured.push({ sources: input.sources });
       return {
         bytes: new Uint8Array([1, 2, 3]),
@@ -272,7 +284,11 @@ describe('Phase 5 render_export worker job', () => {
       })
       .returning();
     await db.insert(schema.itemAttributes).values([
-      { itemId: item!.id, key: 'model_number', currentValue: 'Enviro-Flex (V06ADA1, V06BAA1, V06CAN1)' },
+      {
+        itemId: item!.id,
+        key: 'model_number',
+        currentValue: 'Enviro-Flex (V06ADA1, V06BAA1, V06CAN1)',
+      },
       { itemId: item!.id, key: 'manufacturer', currentValue: 'CANTEX' },
     ]);
 
@@ -296,7 +312,7 @@ describe('Phase 5 render_export worker job', () => {
       .values({ sourcePdfId: sourcePdf!.id, pageNumber: 1 })
       .returning();
 
-    // Two sizes; only 1/2" (V06BAA1) is selected.
+    // Four sizes; three are selected and must remain in sort order for the TOC.
     await db.insert(schema.itemVariants).values([
       {
         itemId: item!.id,
@@ -314,6 +330,26 @@ describe('Phase 5 render_export worker job', () => {
         size: '1/2"',
         displayLabel: '1/2"',
         sortOrder: 1,
+        isDefaultForSize: true,
+        selectedAt: new Date(),
+      },
+      {
+        itemId: item!.id,
+        sourcePageId: page1!.id,
+        partNumber: 'V06CAN1',
+        size: '3/4"',
+        displayLabel: '3/4"',
+        sortOrder: 2,
+        isDefaultForSize: true,
+        selectedAt: new Date(),
+      },
+      {
+        itemId: item!.id,
+        sourcePageId: page1!.id,
+        partNumber: 'V06DAN1',
+        size: '1"',
+        displayLabel: '1"',
+        sortOrder: 3,
         isDefaultForSize: true,
         selectedAt: new Date(),
       },
@@ -361,11 +397,25 @@ describe('Phase 5 render_export worker job', () => {
 
     expect(captured).toHaveLength(1);
     const source = captured[0]!;
-    // TOC shows the submitted part number, not the full model-number list.
-    expect(source.partNumber).toBe('V06BAA1');
-    // Only the selected 1/2" variant is forwarded — the unselected 3/8" is not.
+    // TOC shows all submitted part numbers, not the full model-number list.
+    expect(source.partNumber).toBe('V06BAA1, V06CAN1, V06DAN1');
+    // Only the selected variants are forwarded; the unselected 3/8" is not.
     expect(source.selectedVariants).toEqual([
-      { partNumber: 'V06BAA1', label: '1/2"', sourcePage: 1, size: '1/2"', verificationStatus: null },
+      {
+        partNumber: 'V06BAA1',
+        label: '1/2"',
+        sourcePage: 1,
+        size: '1/2"',
+        verificationStatus: null,
+      },
+      {
+        partNumber: 'V06CAN1',
+        label: '3/4"',
+        sourcePage: 1,
+        size: '3/4"',
+        verificationStatus: null,
+      },
+      { partNumber: 'V06DAN1', label: '1"', sourcePage: 1, size: '1"', verificationStatus: null },
     ]);
   });
 

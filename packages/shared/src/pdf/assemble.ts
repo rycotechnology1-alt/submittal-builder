@@ -8,15 +8,7 @@
 // The bookmark/outline construction uses pdf-lib's low-level context because
 // the library has no high-level outline API.
 
-import {
-  PDFArray,
-  PDFDocument,
-  PDFName,
-  PDFNumber,
-  PDFString,
-  StandardFonts,
-  rgb,
-} from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFName, PDFNumber, PDFString, StandardFonts, rgb } from 'pdf-lib';
 import type { PDFPage } from 'pdf-lib';
 
 import { buildHeaderLines } from './cover-format.js';
@@ -149,7 +141,11 @@ const TOC_CELL_PAD = 4;
 const TOC_MIN_ROW_HEIGHT = 30; // leave room to hand-write in the approval box
 const TOC_GRID = rgb(0.7, 0.7, 0.7);
 
-type TocColumn = { key: 'number' | 'description' | 'partNumber' | 'manufacturer' | 'approval' | 'page'; label: string; width: number };
+type TocColumn = {
+  key: 'number' | 'description' | 'partNumber' | 'manufacturer' | 'approval' | 'page';
+  label: string;
+  width: number;
+};
 
 const TOC_COLUMNS: TocColumn[] = [
   { key: 'number', label: '#', width: 30 },
@@ -502,24 +498,59 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
   //    insert before the merged sources, then how far page numbers shift.
   const edges = tocColumnEdges();
   const tableRight = edges[edges.length - 1]!;
-  const descWidth = TOC_COLUMNS[1]!.width - 2 * TOC_CELL_PAD;
-  type LaidRow = { row: TocRow; descLines: string[]; height: number; top: number };
+  const columnTextWidth = (colIndex: number) => TOC_COLUMNS[colIndex]!.width - 2 * TOC_CELL_PAD;
+  const maxRowLinesPerPage = Math.max(
+    1,
+    Math.floor((TOC_BODY_TOP - TOC_BOTTOM - 2 * TOC_CELL_PAD) / TOC_LINE_HEIGHT),
+  );
+  const wrapCell = (text: string, colIndex: number) =>
+    text ? wrapText(text, font, TOC_FONT_SIZE, columnTextWidth(colIndex)) : [];
+  type LaidRow = {
+    row: TocRow;
+    descLines: string[];
+    partLines: string[];
+    manufacturerLines: string[];
+    height: number;
+    top: number;
+  };
   const pages: LaidRow[][] = [];
   let currentPage: LaidRow[] = [];
   let y = TOC_BODY_TOP;
   for (const row of tocRows) {
-    const descLines = wrapText(row.description, font, TOC_FONT_SIZE, descWidth);
-    const height = Math.max(
-      descLines.length * TOC_LINE_HEIGHT + 2 * TOC_CELL_PAD,
-      TOC_MIN_ROW_HEIGHT,
-    );
-    if (y - height < TOC_BOTTOM && currentPage.length > 0) {
-      pages.push(currentPage);
-      currentPage = [];
-      y = TOC_BODY_TOP;
+    const descLines = wrapCell(row.description, 1);
+    const partLines = wrapCell(row.partNumber, 2);
+    const manufacturerLines = wrapCell(row.manufacturer, 3);
+    const lineCount = Math.max(descLines.length, partLines.length, manufacturerLines.length, 1);
+
+    for (let start = 0; start < lineCount; start += maxRowLinesPerPage) {
+      const segmentDescLines = descLines.slice(start, start + maxRowLinesPerPage);
+      const segmentPartLines = partLines.slice(start, start + maxRowLinesPerPage);
+      const segmentManufacturerLines = manufacturerLines.slice(start, start + maxRowLinesPerPage);
+      const segmentLineCount = Math.max(
+        segmentDescLines.length,
+        segmentPartLines.length,
+        segmentManufacturerLines.length,
+        1,
+      );
+      const height = Math.max(
+        segmentLineCount * TOC_LINE_HEIGHT + 2 * TOC_CELL_PAD,
+        TOC_MIN_ROW_HEIGHT,
+      );
+      if (y - height < TOC_BOTTOM && currentPage.length > 0) {
+        pages.push(currentPage);
+        currentPage = [];
+        y = TOC_BODY_TOP;
+      }
+      currentPage.push({
+        row,
+        descLines: segmentDescLines,
+        partLines: segmentPartLines,
+        manufacturerLines: segmentManufacturerLines,
+        height,
+        top: y,
+      });
+      y -= height;
     }
-    currentPage.push({ row, descLines, height, top: y });
-    y -= height;
   }
   pages.push(currentPage); // always at least one page (header only when empty)
   const tocPageCount = pages.length;
@@ -539,11 +570,21 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
 
   // 5. Draw the table on each TOC page.
   const drawLine = (page: PDFPage, ax: number, ay: number, bx: number, by: number) =>
-    page.drawLine({ start: { x: ax, y: ay }, end: { x: bx, y: by }, thickness: 0.5, color: TOC_GRID });
+    page.drawLine({
+      start: { x: ax, y: ay },
+      end: { x: bx, y: by },
+      thickness: 0.5,
+      color: TOC_GRID,
+    });
   const drawCell = (page: PDFPage, text: string, colIndex: number, top: number, bold = false) => {
     if (!text) return;
     const col = TOC_COLUMNS[colIndex]!;
-    const fitted = truncateText(text, bold ? fontBold : font, TOC_FONT_SIZE, col.width - 2 * TOC_CELL_PAD);
+    const fitted = truncateText(
+      text,
+      bold ? fontBold : font,
+      TOC_FONT_SIZE,
+      col.width - 2 * TOC_CELL_PAD,
+    );
     page.drawText(fitted, {
       x: edges[colIndex]! + TOC_CELL_PAD,
       y: top - TOC_CELL_PAD - TOC_FONT_SIZE,
@@ -552,11 +593,27 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
       color: rgb(0.15, 0.15, 0.15),
     });
   };
+  const drawWrappedCell = (page: PDFPage, lines: string[], colIndex: number, top: number) => {
+    lines.forEach((line, li) => {
+      page.drawText(line, {
+        x: edges[colIndex]! + TOC_CELL_PAD,
+        y: top - TOC_CELL_PAD - TOC_FONT_SIZE - li * TOC_LINE_HEIGHT,
+        size: TOC_FONT_SIZE,
+        font,
+        color: rgb(0.15, 0.15, 0.15),
+      });
+    });
+  };
 
   pages.forEach((laidRows, p) => {
     const page = tocPageObjs[p]!;
     if (p === 0) {
-      page.drawText('Table of Contents', { x: TOC_MARGIN, y: PAGE_H - 72, size: 20, font: fontBold });
+      page.drawText('Table of Contents', {
+        x: TOC_MARGIN,
+        y: PAGE_H - 72,
+        size: 20,
+        font: fontBold,
+      });
     }
 
     // Header labels (wrap so "Engineers Approval" stacks instead of clipping).
@@ -574,19 +631,11 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
     });
 
     // Body rows.
-    for (const { row, descLines, top } of laidRows) {
+    for (const { row, descLines, partLines, manufacturerLines, top } of laidRows) {
       drawCell(page, String(row.number), 0, top);
-      descLines.forEach((line, li) => {
-        page.drawText(line, {
-          x: edges[1]! + TOC_CELL_PAD,
-          y: top - TOC_CELL_PAD - TOC_FONT_SIZE - li * TOC_LINE_HEIGHT,
-          size: TOC_FONT_SIZE,
-          font,
-          color: rgb(0.15, 0.15, 0.15),
-        });
-      });
-      drawCell(page, row.partNumber, 2, top);
-      drawCell(page, row.manufacturer, 3, top);
+      drawWrappedCell(page, descLines, 1, top);
+      drawWrappedCell(page, partLines, 2, top);
+      drawWrappedCell(page, manufacturerLines, 3, top);
       // Column 4 (Engineers Approval) is intentionally left blank.
       drawCell(page, String(row.pageStartIndex + tocPageCount + 1), 5, top);
     }
@@ -598,7 +647,8 @@ export async function assembleSubmittalPdf(input: AssembleInput): Promise<Assemb
     for (const x of edges) drawLine(page, x, TOC_HEADER_TOP, x, bodyBottom);
     drawLine(page, TOC_MARGIN, TOC_HEADER_TOP, tableRight, TOC_HEADER_TOP);
     drawLine(page, TOC_MARGIN, TOC_BODY_TOP, tableRight, TOC_BODY_TOP);
-    for (const { top, height } of laidRows) drawLine(page, TOC_MARGIN, top - height, tableRight, top - height);
+    for (const { top, height } of laidRows)
+      drawLine(page, TOC_MARGIN, top - height, tableRight, top - height);
   });
 
   // 6. Bates stamp every page in the assembled document.

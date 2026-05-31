@@ -197,6 +197,96 @@ describe('assembleSubmittalPdf', () => {
     expect(reopened.getPageCount()).toBe(5);
   });
 
+  it('wraps long TOC part number lists without truncating selected values', async () => {
+    const source = await makeFixturePdf(1);
+    const partNumbers = Array.from(
+      { length: 24 },
+      (_, i) => `PN-${String(i + 1).padStart(4, '0')}`,
+    );
+
+    const result = await assembleSubmittalPdf({
+      cover: {
+        workspaceName: 'Acme',
+        subCompanyName: 'Acme',
+        projectName: 'Test',
+        submittalNumber: '26 05 00',
+        specSection: '26 05 00',
+        revision: 'R0',
+        packageTitle: null,
+      },
+      sources: [
+        {
+          bytes: source,
+          title: 'Multi-size Item',
+          itemId: 'item-1',
+          description: 'Conduit with multiple submitted sizes.',
+          partNumber: partNumbers.join(', '),
+          manufacturer: 'CANTEX',
+        },
+      ],
+    });
+
+    const parsed = await parsePdfPages(result.bytes);
+    const text = parsed.pages.map((page) => page.text ?? '').join(' ');
+    for (const partNumber of partNumbers) {
+      expect(text).toContain(partNumber);
+    }
+    expect(text).not.toContain('...');
+    expect(text).not.toContain('…');
+  });
+
+  it('splits an oversized TOC part number row across pages and preserves page math', async () => {
+    const source = await makeFixturePdf(1);
+    const partNumbers = Array.from(
+      { length: 180 },
+      (_, i) => `PN-${String(i + 1).padStart(4, '0')}`,
+    );
+
+    const result = await assembleSubmittalPdf({
+      cover: {
+        workspaceName: 'Acme',
+        subCompanyName: 'Acme',
+        projectName: 'Test',
+        submittalNumber: '26 05 00',
+        specSection: '26 05 00',
+        revision: 'R0',
+        packageTitle: null,
+      },
+      sources: [
+        {
+          bytes: source,
+          title: 'Oversized Multi-size Item',
+          itemId: 'item-1',
+          description:
+            'A submitted product with more selected part numbers than fit on one TOC page.',
+          partNumber: partNumbers.join(', '),
+          manufacturer: 'CANTEX',
+        },
+        {
+          bytes: source,
+          title: 'Following Item',
+          itemId: 'item-2',
+          description: 'The item after the oversized TOC row.',
+          partNumber: 'FOLLOW-001',
+          manufacturer: 'Acme',
+        },
+      ],
+    });
+
+    const tocPageCount = result.pageCount - 1 - 2;
+    expect(tocPageCount).toBeGreaterThan(1);
+    expect(result.bookmarks).toEqual([
+      { title: 'Oversized Multi-size Item', pageNumber: tocPageCount + 2 },
+      { title: 'Following Item', pageNumber: tocPageCount + 3 },
+    ]);
+    expect(result.bookmarks[1]!.pageNumber).toBe(result.pageCount);
+
+    const parsed = await parsePdfPages(result.bytes);
+    const text = parsed.pages.map((page) => page.text ?? '').join(' ');
+    expect(text).toContain(partNumbers[0]);
+    expect(text).toContain(partNumbers[partNumbers.length - 1]);
+  });
+
   it('paginates the TOC across multiple pages and shifts page numbers by the TOC page count', async () => {
     const onePage = await makeFixturePdf(1);
     const count = 60;
@@ -411,7 +501,12 @@ describe('assembleSubmittalPdf', () => {
           title: 'Base Spacer',
           itemId: 'item-1',
           selectedVariants: [
-            { partNumber: '5335867', label: '4 x 2', sourcePage: 1, verificationStatus: 'unverifiable' },
+            {
+              partNumber: '5335867',
+              label: '4 x 2',
+              sourcePage: 1,
+              verificationStatus: 'unverifiable',
+            },
           ],
         },
       ],

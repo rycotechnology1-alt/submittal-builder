@@ -89,17 +89,6 @@ drizzle/meta/_journal.json.bak
 *.sqlite3
 
 # -----------------------------------------------------------------------------
-# Spike / scratch output (Phase 0 produces PDFs, JSON, images we don't ship)
-# -----------------------------------------------------------------------------
-spikes/**/output/
-spikes/**/*.pdf
-spikes/**/*.png
-spikes/**/*.webp
-spikes/**/*.jpg
-# Keep input fixtures.
-!spikes/**/fixtures/**
-
-# -----------------------------------------------------------------------------
 # IDE / editors
 # -----------------------------------------------------------------------------
 .vscode/

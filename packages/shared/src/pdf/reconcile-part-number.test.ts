@@ -12,7 +12,7 @@ import { locateBySize, reconcilePartNumbers } from './locate-part-number.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const fixturePath = resolve(
   here,
-  '../../../../spikes/fixtures/CANTEX_Improved_Base_Spacer_reduced.pdf',
+  './__fixtures__/CANTEX_Improved_Base_Spacer_reduced.pdf',
 );
 const fixtureBytes = new Uint8Array(readFileSync(fixturePath));
 const SKU_PAGE = 2;

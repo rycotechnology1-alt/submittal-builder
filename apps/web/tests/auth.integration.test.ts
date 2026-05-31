@@ -3,7 +3,7 @@
 // server — route handlers are async functions and we call them directly with
 // synthetic Request objects. Cookies move through a small jar (helpers/).
 //
-// CI does NOT run this yet (no secrets in CI); see step-8-phase-1-handoff.md.
+// CI does NOT run this yet (no secrets in CI); see docs/design-history/step-8-phase-1-handoff.md.
 
 import '@/env';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';

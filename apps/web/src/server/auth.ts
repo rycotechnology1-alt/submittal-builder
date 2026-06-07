@@ -14,6 +14,7 @@ import {
   sendPasswordResetEmail,
   sendVerificationEmail,
 } from '@submittal/shared/notifications';
+import { eq } from 'drizzle-orm';
 
 import { db } from '@/server/db';
 import { schema } from '@/server/db';
@@ -46,6 +47,18 @@ export const auth = betterAuth({
         type: 'string',
         required: true,
         input: true,
+      },
+      // Reflected so session-attached user objects expose the role + flag to
+      // server components and middleware. `input: false` blocks client write.
+      role: {
+        type: 'string',
+        required: false,
+        input: false,
+      },
+      requirePasswordChange: {
+        type: 'boolean',
+        required: false,
+        input: false,
       },
     },
   },
@@ -89,6 +102,25 @@ export const auth = betterAuth({
       if (!res.ok) {
         console.error('sendVerificationEmail: Resend failed', res.error);
       }
+    },
+  },
+
+  databaseHooks: {
+    session: {
+      create: {
+        // Fire-and-forget: stamp users.last_sign_in_at after better-auth has
+        // inserted the session row. Failure here must NOT block sign-in.
+        after: async (session) => {
+          try {
+            await db
+              .update(schema.users)
+              .set({ lastSignInAt: new Date() })
+              .where(eq(schema.users.id, session.userId));
+          } catch (err) {
+            console.error('lastSignInAt hook failed', err);
+          }
+        },
+      },
     },
   },
 

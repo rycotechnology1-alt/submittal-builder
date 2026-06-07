@@ -104,6 +104,17 @@ export const users = pgTable(
     emailVerified: boolean('email_verified').notNull().default(false),
     name: text('name').notNull(),
     image: text('image'),
+    // Platform super-admin flag. 'user' is the default; 'admin' grants access
+    // to the /admin dashboard and /api/v1/admin/* routes. Workspace-level roles
+    // (if added later) will live in a separate join table, not here.
+    role: text('role', { enum: ['user', 'admin'] }).notNull().default('user'),
+    // True when the user must change their password before they can use the
+    // app — set by admin-initiated create or password reset. Cleared by the
+    // /change-password page on success.
+    requirePasswordChange: boolean('require_password_change').notNull().default(false),
+    // Updated by the better-auth session.create hook on every successful
+    // sign-in. Nullable for users who have never signed in.
+    lastSignInAt: timestamp('last_sign_in_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -613,6 +624,42 @@ export const processingJobs = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Admin audit log
+// ---------------------------------------------------------------------------
+//
+// Append-only record of platform-admin actions taken from /admin. There is no
+// UI yet; the table exists so we have an unbroken paper trail from day one of
+// beta. Querying is by SQL until a UI ships.
+
+export const adminAuditLog = pgTable(
+  'admin_audit_log',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    // The admin who performed the action. `set null` (not cascade) so the log
+    // survives an actor being deleted; we keep the historical record.
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    // Dotted action key — e.g. 'user.create', 'user.reset_password',
+    // 'user.send_reset_email'. Free-form text so new actions don't require a
+    // migration to extend a pg_enum.
+    action: text('action').notNull(),
+    // What kind of entity the action targeted — 'user' for now.
+    targetType: text('target_type').notNull(),
+    // Nullable so actions without a single target (e.g. bulk ops) can still be
+    // logged.
+    targetId: uuid('target_id'),
+    metadata: jsonb('metadata').notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    actorIdx: index('admin_audit_log_actor_idx').on(t.actorUserId),
+    createdIdx: index('admin_audit_log_created_idx').on(t.createdAt),
+    targetIdx: index('admin_audit_log_target_idx').on(t.targetType, t.targetId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // Type helpers
 // ---------------------------------------------------------------------------
 
@@ -635,3 +682,5 @@ export type SavedItemAttribute = typeof savedItemAttributes.$inferSelect;
 export type SavedItemVariant = typeof savedItemVariants.$inferSelect;
 export type Export = typeof exports.$inferSelect;
 export type ProcessingJob = typeof processingJobs.$inferSelect;
+export type AdminAuditLog = typeof adminAuditLog.$inferSelect;
+export type NewAdminAuditLog = typeof adminAuditLog.$inferInsert;

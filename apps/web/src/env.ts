@@ -39,6 +39,11 @@ const Env = z.object({
   EMAIL_FROM: z.string().email().optional(),
   EMAIL_FROM_NAME: z.string().optional(),
 
+  // Comma-separated email allowlist that bootstraps super-admin access. On
+  // sign-in, matching emails have their users.role row upgraded to 'admin' the
+  // next time they hit the admin gate. Empty by default.
+  ADMIN_EMAILS: z.string().default(''),
+
   // Sentry
   SENTRY_DSN_WEB: z.string().url().optional(),
   SENTRY_ENVIRONMENT: z.string().default('development'),
@@ -67,6 +72,17 @@ export const env = {
   databaseUrl: e.DATABASE_URL ?? e.DATABASE_URL_POOLED_DEV ?? e.DATABASE_URL_DIRECT_DEV ?? '',
   s3Bucket: e.S3_BUCKET ?? e.S3_BUCKET_DEV ?? e.S3_BUCKET_PROD ?? '',
 };
+
+/** Lower-cased set of bootstrap super-admin emails. Empty when unset. */
+export const adminEmails: ReadonlySet<string> = new Set(
+  e.ADMIN_EMAILS.split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+/** True iff transactional email is wired up. Used by the UI to disable the
+ * "Send password reset email" action while we're still on a vercel.app domain. */
+export const emailEnabled = Boolean(e.RESEND_API_KEY && e.EMAIL_FROM);
 
 if (!env.databaseUrl) {
   throw new Error(

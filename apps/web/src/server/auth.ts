@@ -19,6 +19,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/server/db';
 import { schema } from '@/server/db';
 import { env } from '@/env';
+import { toEmailClientSafeVerificationUrl } from '@/server/auth-verification-links';
 
 export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
@@ -97,7 +98,7 @@ export const auth = betterAuth({
       const res = await sendVerificationEmail({
         to: user.email,
         name: user.name ?? user.email,
-        verificationUrl: url,
+        verificationUrl: toEmailClientSafeVerificationUrl(url),
       });
       if (!res.ok) {
         console.error('sendVerificationEmail: Resend failed', res.error);

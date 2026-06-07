@@ -64,6 +64,13 @@
       "when": 1780263000000,
       "tag": "0008_common_saved_items",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780776491564,
+      "tag": "0009_zippy_pestilence",
+      "breakpoints": true
     }
   ]
 }

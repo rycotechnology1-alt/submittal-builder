@@ -1,9 +1,19 @@
+import { randomUUID } from 'node:crypto';
 import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { parsePdfPages } from '@submittal/shared/pdf/parse';
 
 import type { Item, SourcePdf } from '@submittal/db';
 import { db, schema } from '@/server/db';
 import { iso, jsonError } from '@/server/api';
+import {
+  isWorkspaceStorageKey,
+  savedItemFileStorageKey,
+  sha256Hex,
+  UPLOAD_URL_TTL_SECONDS,
+} from '@/server/file-records';
 import { findLivePackage, notFound } from '@/server/phase2-records';
+import { getProcessingQueue } from '@/server/processing-queue';
+import { getStorage } from '@/server/storage';
 
 type DbExecutor = typeof db;
 
@@ -24,10 +34,14 @@ export function savedItemSummaryJson(input: {
     id: input.item.id,
     title: input.item.title,
     doc_type: input.item.docType,
+    doc_type_confidence: input.item.docTypeConfidence,
+    doc_type_original_ai_value: input.item.docTypeOriginalAiValue,
     original_filename: input.file.originalFilename,
     byte_size: input.file.byteSize,
     page_count: input.file.pageCount,
     sha256: input.file.sha256,
+    processing_status: input.file.processingStatus,
+    processing_error: input.file.processingError,
     attributes: input.attributes.map((attribute) => ({
       key: attribute.key,
       current_value: attribute.currentValue,
@@ -38,6 +52,43 @@ export function savedItemSummaryJson(input: {
     })),
     variant_count: input.variantCount,
     updated_at: iso(input.item.updatedAt)!,
+  };
+}
+
+export function savedItemFileJson(file: typeof schema.savedItemFiles.$inferSelect) {
+  return {
+    id: file.id,
+    original_filename: file.originalFilename,
+    byte_size: file.byteSize,
+    sha256: file.sha256,
+    page_count: file.pageCount,
+    processing_status: file.processingStatus,
+    processing_error: file.processingError,
+  };
+}
+
+export function savedItemAttributeJson(attribute: typeof schema.savedItemAttributes.$inferSelect) {
+  return {
+    key: attribute.key,
+    current_value: attribute.currentValue,
+    original_ai_value: attribute.originalAiValue,
+    confidence: attribute.confidence,
+    saved_item_source_page_id: attribute.savedItemSourcePageId,
+    edited_by_user_at: iso(attribute.editedByUserAt),
+  };
+}
+
+export function savedItemVariantJson(variant: typeof schema.savedItemVariants.$inferSelect) {
+  return {
+    id: variant.id,
+    part_number: variant.partNumber,
+    size: variant.size,
+    secondary_dims: variant.secondaryDims ?? null,
+    display_label: variant.displayLabel,
+    sort_order: variant.sortOrder,
+    is_default_for_size: variant.isDefaultForSize,
+    saved_item_source_page_id: variant.savedItemSourcePageId,
+    part_number_verification: variant.partNumberVerification,
   };
 }
 
@@ -70,6 +121,474 @@ export async function savedItemSummary(workspaceId: string, savedItemId: string)
     attributes,
     variantCount: variantCount?.value ?? 0,
   });
+}
+
+export async function findSavedItemInWorkspace(workspaceId: string, savedItemId: string) {
+  const [row] = await db
+    .select({ item: schema.savedItems, file: schema.savedItemFiles })
+    .from(schema.savedItems)
+    .innerJoin(
+      schema.savedItemFiles,
+      eq(schema.savedItems.savedItemFileId, schema.savedItemFiles.id),
+    )
+    .where(
+      and(eq(schema.savedItems.workspaceId, workspaceId), eq(schema.savedItems.id, savedItemId)),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function savedItemDetail(workspaceId: string, savedItemId: string) {
+  const row = await findSavedItemInWorkspace(workspaceId, savedItemId);
+  if (!row) return null;
+
+  const [sourcePages, attributes, variants, summary] = await Promise.all([
+    db
+      .select()
+      .from(schema.savedItemSourcePages)
+      .where(eq(schema.savedItemSourcePages.savedItemFileId, row.file.id))
+      .orderBy(asc(schema.savedItemSourcePages.pageNumber)),
+    db
+      .select()
+      .from(schema.savedItemAttributes)
+      .where(eq(schema.savedItemAttributes.savedItemId, row.item.id)),
+    db
+      .select()
+      .from(schema.savedItemVariants)
+      .where(eq(schema.savedItemVariants.savedItemId, row.item.id))
+      .orderBy(asc(schema.savedItemVariants.sortOrder)),
+    savedItemSummary(workspaceId, savedItemId),
+  ]);
+
+  return {
+    saved_item: summary!,
+    file: savedItemFileJson(row.file),
+    source_pages: sourcePages.map((page) => ({
+      id: page.id,
+      page_number: page.pageNumber,
+      has_ocr: page.hasOcr,
+    })),
+    attributes: attributes.map(savedItemAttributeJson),
+    variants: variants.map(savedItemVariantJson),
+  };
+}
+
+async function touchSavedItem(executor: DbExecutor, savedItemId: string, now = new Date()) {
+  await executor
+    .update(schema.savedItems)
+    .set({ updatedAt: now })
+    .where(eq(schema.savedItems.id, savedItemId));
+}
+
+export async function updateSavedItem(input: {
+  workspaceId: string;
+  savedItemId: string;
+  title?: string;
+  docType?: (typeof schema.savedItems.$inferSelect)['docType'];
+}) {
+  const row = await findSavedItemInWorkspace(input.workspaceId, input.savedItemId);
+  if (!row) return null;
+  const now = new Date();
+  await db
+    .update(schema.savedItems)
+    .set({
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.docType !== undefined ? { docType: input.docType } : {}),
+      updatedAt: now,
+    })
+    .where(eq(schema.savedItems.id, row.item.id));
+  return savedItemSummary(input.workspaceId, row.item.id);
+}
+
+export async function updateSavedItemAttribute(input: {
+  workspaceId: string;
+  savedItemId: string;
+  key: string;
+  value: string | null;
+}) {
+  const row = await findSavedItemInWorkspace(input.workspaceId, input.savedItemId);
+  if (!row) return null;
+
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(schema.savedItemAttributes)
+      .where(
+        and(
+          eq(schema.savedItemAttributes.savedItemId, row.item.id),
+          eq(schema.savedItemAttributes.key, input.key),
+        ),
+      )
+      .limit(1);
+
+    let updated;
+    if (existing) {
+      [updated] = await tx
+        .update(schema.savedItemAttributes)
+        .set({
+          currentValue: input.value,
+          editedByUserAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.savedItemAttributes.id, existing.id))
+        .returning();
+    } else {
+      [updated] = await tx
+        .insert(schema.savedItemAttributes)
+        .values({
+          savedItemId: row.item.id,
+          key: input.key,
+          currentValue: input.value,
+          originalAiValue: null,
+          editedByUserAt: now,
+        })
+        .returning();
+    }
+    await touchSavedItem(tx as unknown as typeof db, row.item.id, now);
+    return savedItemAttributeJson(updated!);
+  });
+}
+
+async function validateSavedItemSourcePage(input: {
+  workspaceId: string;
+  savedItemId: string;
+  savedItemSourcePageId: string | null | undefined;
+}) {
+  if (!input.savedItemSourcePageId) return true;
+  const row = await findSavedItemInWorkspace(input.workspaceId, input.savedItemId);
+  if (!row) return false;
+  const [page] = await db
+    .select({ id: schema.savedItemSourcePages.id })
+    .from(schema.savedItemSourcePages)
+    .where(
+      and(
+        eq(schema.savedItemSourcePages.id, input.savedItemSourcePageId),
+        eq(schema.savedItemSourcePages.savedItemFileId, row.file.id),
+      ),
+    )
+    .limit(1);
+  return Boolean(page);
+}
+
+export async function createSavedItemVariant(input: {
+  workspaceId: string;
+  savedItemId: string;
+  partNumber: string;
+  size: string;
+  secondaryDims?: typeof schema.savedItemVariants.$inferSelect.secondaryDims | null;
+  displayLabel: string;
+  sortOrder: number;
+  isDefaultForSize: boolean;
+  savedItemSourcePageId?: string | null;
+}) {
+  const row = await findSavedItemInWorkspace(input.workspaceId, input.savedItemId);
+  if (!row) return null;
+  const sourceOk = await validateSavedItemSourcePage({
+    workspaceId: input.workspaceId,
+    savedItemId: input.savedItemId,
+    savedItemSourcePageId: input.savedItemSourcePageId,
+  });
+  if (!sourceOk) return false;
+
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const [variant] = await tx
+      .insert(schema.savedItemVariants)
+      .values({
+        savedItemId: row.item.id,
+        savedItemSourcePageId: input.savedItemSourcePageId ?? null,
+        partNumber: input.partNumber,
+        size: input.size,
+        secondaryDims: input.secondaryDims ?? null,
+        displayLabel: input.displayLabel,
+        sortOrder: input.sortOrder,
+        isDefaultForSize: input.isDefaultForSize,
+      })
+      .returning();
+    await touchSavedItem(tx as unknown as typeof db, row.item.id, now);
+    return savedItemVariantJson(variant!);
+  });
+}
+
+export async function updateSavedItemVariant(input: {
+  workspaceId: string;
+  savedItemId: string;
+  variantId: string;
+  patch: Partial<{
+    partNumber: string;
+    size: string;
+    secondaryDims: typeof schema.savedItemVariants.$inferSelect.secondaryDims | null;
+    displayLabel: string;
+    sortOrder: number;
+    isDefaultForSize: boolean;
+    savedItemSourcePageId: string | null;
+  }>;
+}) {
+  const row = await findSavedItemInWorkspace(input.workspaceId, input.savedItemId);
+  if (!row) return null;
+  const sourceOk = await validateSavedItemSourcePage({
+    workspaceId: input.workspaceId,
+    savedItemId: input.savedItemId,
+    savedItemSourcePageId: input.patch.savedItemSourcePageId,
+  });
+  if (!sourceOk) return false;
+  const [existing] = await db
+    .select()
+    .from(schema.savedItemVariants)
+    .where(
+      and(
+        eq(schema.savedItemVariants.id, input.variantId),
+        eq(schema.savedItemVariants.savedItemId, row.item.id),
+      ),
+    )
+    .limit(1);
+  if (!existing) return null;
+
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const [variant] = await tx
+      .update(schema.savedItemVariants)
+      .set({
+        ...(input.patch.partNumber !== undefined ? { partNumber: input.patch.partNumber } : {}),
+        ...(input.patch.size !== undefined ? { size: input.patch.size } : {}),
+        ...(input.patch.secondaryDims !== undefined
+          ? { secondaryDims: input.patch.secondaryDims }
+          : {}),
+        ...(input.patch.displayLabel !== undefined
+          ? { displayLabel: input.patch.displayLabel }
+          : {}),
+        ...(input.patch.sortOrder !== undefined ? { sortOrder: input.patch.sortOrder } : {}),
+        ...(input.patch.isDefaultForSize !== undefined
+          ? { isDefaultForSize: input.patch.isDefaultForSize }
+          : {}),
+        ...(input.patch.savedItemSourcePageId !== undefined
+          ? { savedItemSourcePageId: input.patch.savedItemSourcePageId }
+          : {}),
+        updatedAt: now,
+      })
+      .where(eq(schema.savedItemVariants.id, existing.id))
+      .returning();
+    await touchSavedItem(tx as unknown as typeof db, row.item.id, now);
+    return savedItemVariantJson(variant!);
+  });
+}
+
+export async function deleteSavedItemVariant(input: {
+  workspaceId: string;
+  savedItemId: string;
+  variantId: string;
+}) {
+  const row = await findSavedItemInWorkspace(input.workspaceId, input.savedItemId);
+  if (!row) return null;
+  const [existing] = await db
+    .select({ id: schema.savedItemVariants.id })
+    .from(schema.savedItemVariants)
+    .where(
+      and(
+        eq(schema.savedItemVariants.id, input.variantId),
+        eq(schema.savedItemVariants.savedItemId, row.item.id),
+      ),
+    )
+    .limit(1);
+  if (!existing) return null;
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.savedItemVariants).where(eq(schema.savedItemVariants.id, existing.id));
+    await touchSavedItem(tx as unknown as typeof db, row.item.id);
+  });
+  return true;
+}
+
+export async function deleteSavedItem(input: { workspaceId: string; savedItemId: string }) {
+  const row = await findSavedItemInWorkspace(input.workspaceId, input.savedItemId);
+  if (!row) return null;
+
+  const [references] = await db
+    .select({ value: count() })
+    .from(schema.sourcePdfs)
+    .where(eq(schema.sourcePdfs.savedItemFileId, row.file.id));
+  const hasPackageSnapshots = (references?.value ?? 0) > 0;
+
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.savedItems).where(eq(schema.savedItems.id, row.item.id));
+    if (!hasPackageSnapshots) {
+      await tx.delete(schema.savedItemFiles).where(eq(schema.savedItemFiles.id, row.file.id));
+    }
+  });
+
+  if (!hasPackageSnapshots) {
+    try {
+      await getStorage().deleteObject(row.file.storageKey);
+    } catch (error) {
+      console.warn('saved-item storage delete failed', {
+        saved_item_id: row.item.id,
+        storage_key: row.file.storageKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return true;
+}
+
+export async function presignSavedItemUpload(input: {
+  workspaceId: string;
+  filename: string;
+  contentType: string;
+}) {
+  const savedItemFileId = randomUUID();
+  const storageKey = savedItemFileStorageKey(input.workspaceId, savedItemFileId);
+  const requiredHeaders = { 'content-type': input.contentType };
+  const presigned = await getStorage().presignPutUrl({
+    key: storageKey,
+    contentType: input.contentType,
+    expiresInSeconds: UPLOAD_URL_TTL_SECONDS,
+    requiredHeaders,
+  });
+
+  return {
+    upload_url: presigned.url,
+    storage_key: storageKey,
+    expires_at: new Date(Date.now() + UPLOAD_URL_TTL_SECONDS * 1000).toISOString(),
+    required_headers: presigned.requiredHeaders,
+  };
+}
+
+function titleFromFilename(filename: string) {
+  return filename.replace(/\.pdf$/i, '').trim() || filename;
+}
+
+export async function confirmSavedItemUpload(input: {
+  workspaceId: string;
+  storageKey: string;
+  originalFilename: string;
+  requestId?: string;
+}) {
+  if (!isWorkspaceStorageKey(input.workspaceId, input.storageKey)) {
+    return jsonError(404, 'not_found', 'Not found');
+  }
+
+  const storage = getStorage();
+  const head = await storage.headObject(input.storageKey);
+  if (!head) return jsonError(409, 'upload_missing', 'Uploaded object was not found');
+
+  const bytes = await storage.getObjectBytes(input.storageKey);
+  const sha256 = sha256Hex(bytes);
+  const parsed = await parsePdfPages(bytes);
+
+  const [existingFile] = await db
+    .select()
+    .from(schema.savedItemFiles)
+    .where(
+      and(
+        eq(schema.savedItemFiles.workspaceId, input.workspaceId),
+        eq(schema.savedItemFiles.sha256, sha256),
+      ),
+    )
+    .limit(1);
+
+  if (existingFile) {
+    const existingItem = await savedItemByFile(input.workspaceId, existingFile.id);
+    if (existingItem) {
+      try {
+        await storage.deleteObject(input.storageKey);
+      } catch {
+        /* best effort */
+      }
+      const summary = await savedItemSummary(input.workspaceId, existingItem.id);
+      return {
+        status: 200,
+        body: {
+          saved_item: summary!,
+          duplicate: true,
+          processing_status: existingFile.processingStatus,
+        },
+      };
+    }
+  }
+
+  const savedItemId = await db.transaction(async (tx) => {
+    const file =
+      existingFile ??
+      (
+        await tx
+          .insert(schema.savedItemFiles)
+          .values({
+            workspaceId: input.workspaceId,
+            storageKey: input.storageKey,
+            originalFilename: input.originalFilename,
+            byteSize: bytes.byteLength,
+            sha256,
+            pageCount: parsed.pageCount,
+            processingStatus: 'uploaded',
+          })
+          .returning()
+      )[0]!;
+
+    if (existingFile) {
+      await tx
+        .update(schema.savedItemFiles)
+        .set({
+          originalFilename: input.originalFilename,
+          pageCount: parsed.pageCount,
+          processingStatus: 'uploaded',
+          processingError: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.savedItemFiles.id, existingFile.id));
+    }
+
+    await tx
+      .delete(schema.savedItemSourcePages)
+      .where(eq(schema.savedItemSourcePages.savedItemFileId, file.id));
+    await tx.insert(schema.savedItemSourcePages).values(
+      parsed.pages.map((page) => ({
+        savedItemFileId: file.id,
+        pageNumber: page.pageNumber,
+        ocrText: page.text,
+        hasOcr: page.hasOcr,
+      })),
+    );
+
+    const [savedItem] = await tx
+      .insert(schema.savedItems)
+      .values({
+        workspaceId: input.workspaceId,
+        savedItemFileId: file.id,
+        title: titleFromFilename(input.originalFilename),
+        docType: 'other',
+      })
+      .returning();
+    return savedItem!.id;
+  });
+
+  if (existingFile && input.storageKey !== existingFile.storageKey) {
+    try {
+      await storage.deleteObject(input.storageKey);
+    } catch {
+      /* best effort */
+    }
+  }
+
+  await getProcessingQueue().send(
+    'saved_item_process',
+    { workspaceId: input.workspaceId, savedItemId, requestId: input.requestId },
+    {
+      singletonKey: `saved_item_process:${savedItemId}`,
+      retryLimit: 3,
+      retryBackoff: true,
+    },
+  );
+
+  const summary = await savedItemSummary(input.workspaceId, savedItemId);
+  return {
+    status: 201,
+    body: {
+      saved_item: summary!,
+      duplicate: false,
+      processing_status: summary!.processing_status,
+    },
+  };
 }
 
 export async function listSavedItems(workspaceId: string, q?: string | null) {
@@ -191,17 +710,18 @@ export async function saveCommonItem(input: {
     )
     .limit(1);
 
-  if (existingFile && !input.duplicateAction) {
-    const existing = await savedItemByFile(input.workspaceId, existingFile.id);
+  const existingSavedItem = existingFile
+    ? await savedItemByFile(input.workspaceId, existingFile.id)
+    : null;
+
+  if (existingFile && existingSavedItem && !input.duplicateAction) {
     return jsonError(409, 'saved_item_already_exists', 'This PDF is already saved', {
-      saved_item_id: existing?.id ?? null,
+      saved_item_id: existingSavedItem.id,
     });
   }
 
-  if (existingFile && input.duplicateAction === 'keep_existing') {
-    const existing = await savedItemByFile(input.workspaceId, existingFile.id);
-    if (!existing) return notFound();
-    const summary = await savedItemSummary(input.workspaceId, existing.id);
+  if (existingFile && existingSavedItem && input.duplicateAction === 'keep_existing') {
+    const summary = await savedItemSummary(input.workspaceId, existingSavedItem.id);
     return { status: 200, body: { saved_item: summary!, created: false, updated: false } };
   }
 
@@ -408,6 +928,13 @@ export async function importSavedItems(input: {
       ),
     );
   if (rows.length !== uniqueIds.length) return notFound();
+  const notReady = rows.find((row) => row.file.processingStatus !== 'extracted');
+  if (notReady) {
+    return jsonError(409, 'saved_item_not_ready', 'Saved item processing has not finished', {
+      saved_item_id: notReady.item.id,
+      processing_status: notReady.file.processingStatus,
+    });
+  }
 
   const shas = rows.map((row) => row.file.sha256);
   const duplicateSources = await db

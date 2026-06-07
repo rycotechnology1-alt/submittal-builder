@@ -1,11 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 
 import type { Db, SourcePdf } from '@submittal/db';
-import {
-  finishProcessingJobAttempt,
-  schema,
-  startProcessingJobAttempt,
-} from '@submittal/db';
+import { finishProcessingJobAttempt, schema, startProcessingJobAttempt } from '@submittal/db';
 
 export type SourcePdfJobData = {
   workspaceId: string;
@@ -34,7 +30,12 @@ export type RenderExportJobData = {
 
 export const CANCELLED_PROCESSING_MESSAGE = 'Processing cancelled by user.';
 
-export async function markJobRunning(db: Db, data: PackageJobData, kind: JobKind, sourcePdfId?: string) {
+export async function markJobRunning(
+  db: Db,
+  data: PackageJobData,
+  kind: JobKind,
+  sourcePdfId?: string,
+) {
   await startProcessingJobAttempt(db, {
     packageId: data.packageId,
     sourcePdfId: sourcePdfId ?? null,

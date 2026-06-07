@@ -8,7 +8,14 @@ type ProcessingQueue = {
 
 let boss: PgBoss | null = null;
 let started: Promise<PgBoss> | null = null;
-const queues = ['ocr', 'classify', 'extract', 'batch_order', 'render_export'] as const;
+const queues = [
+  'ocr',
+  'classify',
+  'extract',
+  'batch_order',
+  'render_export',
+  'saved_item_process',
+] as const;
 
 async function getBoss(): Promise<PgBoss> {
   if (boss) return boss;

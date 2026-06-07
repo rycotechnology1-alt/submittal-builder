@@ -13,6 +13,9 @@ export function Header({ userName, userEmail }: { userName: string; userEmail: s
           <Link href="/" className="hover:text-foreground">
             Projects
           </Link>
+          <Link href="/saved-items" className="hover:text-foreground">
+            Saved items
+          </Link>
           <UserMenu name={userName} email={userEmail} />
         </nav>
       </div>

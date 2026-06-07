@@ -11,6 +11,10 @@ export function sourcePdfStorageKey(workspaceId: string, sourcePdfId: string): s
   return `workspaces/${workspaceId}/source_pdfs/${sourcePdfId}.pdf`;
 }
 
+export function savedItemFileStorageKey(workspaceId: string, savedItemFileId: string): string {
+  return `workspaces/${workspaceId}/saved_item_files/${savedItemFileId}.pdf`;
+}
+
 export function pagePreviewStorageKey(workspaceId: string, sourcePageId: string): string {
   return `workspaces/${workspaceId}/page_previews/${sourcePageId}.webp`;
 }

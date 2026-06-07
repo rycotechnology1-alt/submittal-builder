@@ -320,6 +320,8 @@ export const savedItemFiles = pgTable(
     byteSize: bigint('byte_size', { mode: 'number' }),
     sha256: text('sha256').notNull(),
     pageCount: integer('page_count'),
+    processingStatus: pdfProcessingStatus('processing_status').notNull().default('extracted'),
+    processingError: text('processing_error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -329,6 +331,10 @@ export const savedItemFiles = pgTable(
       t.sha256,
     ),
     workspaceIdx: index('saved_item_files_workspace_id_idx').on(t.workspaceId),
+    workspaceStatusIdx: index('saved_item_files_workspace_status_idx').on(
+      t.workspaceId,
+      t.processingStatus,
+    ),
   }),
 );
 

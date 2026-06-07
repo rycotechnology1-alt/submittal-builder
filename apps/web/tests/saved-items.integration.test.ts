@@ -2,6 +2,9 @@ import '@/env';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, count, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { auth } from '@/server/auth';
 import { db, schema } from '@/server/db';
@@ -10,6 +13,8 @@ import { CookieJar } from './helpers/cookie-jar';
 import { deleteUserByEmail } from './helpers/test-db';
 
 const PASSWORD = 'saved-items-test-pass-1234';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const fixturePdfPath = path.join(__dirname, '__fixtures__', '01-daikin-vrv-cutsheet.pdf');
 
 type RouteContext<T extends Record<string, string>> = { params: Promise<T> };
 
@@ -100,27 +105,65 @@ async function flipEmailVerified(email: string): Promise<void> {
 
 async function loadRoutes() {
   vi.resetModules();
+  const queuedJobs: { name: string; data: object; options: object }[] = [];
   vi.doMock('@/server/storage', () => ({
     getStorage: () => storage,
   }));
+  vi.doMock('@/server/processing-queue', () => ({
+    getProcessingQueue: () => ({
+      send: async (name: string, data: object, options: object) => {
+        queuedJobs.push({ name, data, options });
+        return `job-${queuedJobs.length}`;
+      },
+    }),
+  }));
 
-  const [signup, projects, projectPackages, saveCommon, savedItems, importSaved, packageDelete] =
-    await Promise.all([
-      import('@/app/api/v1/auth/signup/route'),
-      import('@/app/api/v1/projects/route'),
-      import('@/app/api/v1/projects/[id]/packages/route'),
-      import('@/app/api/v1/items/[id]/save-common/route'),
-      import('@/app/api/v1/saved-items/route'),
-      import('@/app/api/v1/packages/[id]/saved-items/route'),
-      import('@/app/api/v1/packages/[id]/route'),
-    ]);
+  const [
+    signup,
+    projects,
+    projectPackages,
+    saveCommon,
+    savedItems,
+    savedItemDetail,
+    savedItemAttribute,
+    savedItemVariants,
+    savedItemVariant,
+    savedItemUploadPresign,
+    savedItemUploadConfirm,
+    importSaved,
+    packageDelete,
+  ] = await Promise.all([
+    import('@/app/api/v1/auth/signup/route'),
+    import('@/app/api/v1/projects/route'),
+    import('@/app/api/v1/projects/[id]/packages/route'),
+    import('@/app/api/v1/items/[id]/save-common/route'),
+    import('@/app/api/v1/saved-items/route'),
+    import('@/app/api/v1/saved-items/[id]/route'),
+    import('@/app/api/v1/saved-items/[id]/attributes/[key]/route'),
+    import('@/app/api/v1/saved-items/[id]/variants/route'),
+    import('@/app/api/v1/saved-items/[id]/variants/[variantId]/route'),
+    import('@/app/api/v1/saved-items/uploads/presign/route'),
+    import('@/app/api/v1/saved-items/uploads/confirm/route'),
+    import('@/app/api/v1/packages/[id]/saved-items/route'),
+    import('@/app/api/v1/packages/[id]/route'),
+  ]);
 
   return {
+    queuedJobs,
     signupPOST: signup.POST,
     projectsPOST: projects.POST,
     projectPackagesPOST: projectPackages.POST,
     saveCommonPOST: saveCommon.POST,
     savedItemsGET: savedItems.GET,
+    savedItemGET: savedItemDetail.GET,
+    savedItemPATCH: savedItemDetail.PATCH,
+    savedItemDELETE: savedItemDetail.DELETE,
+    savedItemAttributePUT: savedItemAttribute.PUT,
+    savedItemVariantsPOST: savedItemVariants.POST,
+    savedItemVariantPATCH: savedItemVariant.PATCH,
+    savedItemVariantDELETE: savedItemVariant.DELETE,
+    savedItemUploadPresignPOST: savedItemUploadPresign.POST,
+    savedItemUploadConfirmPOST: savedItemUploadConfirm.POST,
     importSavedPOST: importSaved.POST,
     packageDELETE: packageDelete.DELETE,
   };
@@ -336,6 +379,127 @@ describe('saved common items', () => {
     expect(fileCount?.value).toBe(1);
   });
 
+  it('loads, edits, and deletes saved items without leaking across workspaces', async () => {
+    const routes = await loadRoutes();
+    const owner = await createAuthedUser(routes, 'edit-owner');
+    const intruder = await createAuthedUser(routes, 'edit-intruder');
+    emails.push(owner.email, intruder.email);
+    const pkg = await createPackage(routes, owner.cookie);
+    const { item, storageKey } = await seedProcessedItem({
+      workspaceId: owner.workspaceId,
+      packageId: pkg.id,
+    });
+
+    const saved = await routes.saveCommonPOST(
+      jsonReq(`/api/v1/items/${item.id}/save-common`, owner.cookie, {}),
+      ctx({ id: item.id }),
+    );
+    expect(saved.status).toBe(201);
+    const savedBody = (await saved.json()) as { saved_item: { id: string } };
+    const savedItemId = savedBody.saved_item.id;
+
+    const detail = await routes.savedItemGET(
+      authedReq(`/api/v1/saved-items/${savedItemId}`, owner.cookie),
+      ctx({ id: savedItemId }),
+    );
+    expect(detail.status).toBe(200);
+    const detailBody = await detail.json();
+    expect(detailBody.file).toMatchObject({
+      original_filename: 'pvc-conduit.pdf',
+      processing_status: 'extracted',
+      processing_error: null,
+    });
+    expect(detailBody.source_pages).toHaveLength(2);
+    expect(detailBody.attributes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'manufacturer' })]),
+    );
+    expect(detailBody.variants[0]).not.toHaveProperty('selected');
+    expect(detailBody.variants[0]).not.toHaveProperty('selected_at');
+
+    const patch = await routes.savedItemPATCH(
+      jsonReq(
+        `/api/v1/saved-items/${savedItemId}`,
+        owner.cookie,
+        { title: 'Edited conduit sheet', doc_type: 'installation' },
+        'PATCH',
+      ),
+      ctx({ id: savedItemId }),
+    );
+    expect(patch.status).toBe(200);
+    await expect(patch.json()).resolves.toMatchObject({
+      saved_item: { title: 'Edited conduit sheet', doc_type: 'installation' },
+    });
+
+    const attrEdit = await routes.savedItemAttributePUT(
+      jsonReq(
+        `/api/v1/saved-items/${savedItemId}/attributes/manufacturer`,
+        owner.cookie,
+        { value: 'Edited MFR' },
+        'PUT',
+      ),
+      ctx({ id: savedItemId, key: 'manufacturer' }),
+    );
+    expect(attrEdit.status).toBe(200);
+    const attrBody = await attrEdit.json();
+    expect(attrBody.attribute.current_value).toBe('Edited MFR');
+    expect(attrBody.attribute.edited_by_user_at).toEqual(expect.any(String));
+
+    const addVariant = await routes.savedItemVariantsPOST(
+      jsonReq(`/api/v1/saved-items/${savedItemId}/variants`, owner.cookie, {
+        part_number: 'PV100',
+        size: '1 in',
+        secondary_dims: { packaging: 'Bundle' },
+        display_label: '1 in - Bundle',
+        sort_order: 2,
+        is_default_for_size: true,
+        saved_item_source_page_id: detailBody.source_pages[0].id,
+      }),
+      ctx({ id: savedItemId }),
+    );
+    expect(addVariant.status).toBe(201);
+    const addVariantBody = await addVariant.json();
+    expect(addVariantBody.variant).not.toHaveProperty('selected');
+
+    const editVariant = await routes.savedItemVariantPATCH(
+      jsonReq(
+        `/api/v1/saved-items/${savedItemId}/variants/${addVariantBody.variant.id}`,
+        owner.cookie,
+        { display_label: '1 in conduit', sort_order: 3 },
+        'PATCH',
+      ),
+      ctx({ id: savedItemId, variantId: addVariantBody.variant.id }),
+    );
+    expect(editVariant.status).toBe(200);
+    await expect(editVariant.json()).resolves.toMatchObject({
+      variant: { display_label: '1 in conduit', sort_order: 3 },
+    });
+
+    const deleteVariant = await routes.savedItemVariantDELETE(
+      authedReq(
+        `/api/v1/saved-items/${savedItemId}/variants/${addVariantBody.variant.id}`,
+        owner.cookie,
+        { method: 'DELETE' },
+      ),
+      ctx({ id: savedItemId, variantId: addVariantBody.variant.id }),
+    );
+    expect(deleteVariant.status).toBe(204);
+
+    const intruderDetail = await routes.savedItemGET(
+      authedReq(`/api/v1/saved-items/${savedItemId}`, intruder.cookie),
+      ctx({ id: savedItemId }),
+    );
+    expect(intruderDetail.status).toBe(404);
+
+    const deleted = await routes.savedItemDELETE(
+      authedReq(`/api/v1/saved-items/${savedItemId}`, owner.cookie, { method: 'DELETE' }),
+      ctx({ id: savedItemId }),
+    );
+    expect(deleted.status).toBe(204);
+    expect(storage.deletedKeys).not.toContain(storageKey);
+    const list = await routes.savedItemsGET(authedReq('/api/v1/saved-items', owner.cookie));
+    expect(await list.json()).toMatchObject({ data: [] });
+  });
+
   it('imports saved items as unselected package snapshots and keeps saved storage on delete', async () => {
     const routes = await loadRoutes();
     const user = await createAuthedUser(routes, 'import-options');
@@ -394,6 +558,144 @@ describe('saved common items', () => {
     expect(deleted.status).toBe(204);
     expect(storage.deletedKeys).not.toContain(storageKey);
     expect(storage.objects.has(storageKey)).toBe(true);
+  });
+
+  it('deletes library rows safely when imported snapshots still reference saved storage', async () => {
+    const routes = await loadRoutes();
+    const user = await createAuthedUser(routes, 'safe-delete');
+    emails.push(user.email);
+    const sourcePackage = await createPackage(routes, user.cookie);
+    const targetPackage = await createPackage(routes, user.cookie);
+    const { item, storageKey } = await seedProcessedItem({
+      workspaceId: user.workspaceId,
+      packageId: sourcePackage.id,
+    });
+
+    const saved = await routes.saveCommonPOST(
+      jsonReq(`/api/v1/items/${item.id}/save-common`, user.cookie, {}),
+      ctx({ id: item.id }),
+    );
+    const savedBody = (await saved.json()) as { saved_item: { id: string } };
+
+    const imported = await routes.importSavedPOST(
+      jsonReq(`/api/v1/packages/${targetPackage.id}/saved-items`, user.cookie, {
+        saved_item_ids: [savedBody.saved_item.id],
+      }),
+      ctx({ id: targetPackage.id }),
+    );
+    expect(imported.status).toBe(201);
+
+    const deleted = await routes.savedItemDELETE(
+      authedReq(`/api/v1/saved-items/${savedBody.saved_item.id}`, user.cookie, {
+        method: 'DELETE',
+      }),
+      ctx({ id: savedBody.saved_item.id }),
+    );
+    expect(deleted.status).toBe(204);
+    expect(storage.deletedKeys).not.toContain(storageKey);
+    expect(storage.objects.has(storageKey)).toBe(true);
+
+    const fileRows = await db
+      .select()
+      .from(schema.savedItemFiles)
+      .where(eq(schema.savedItemFiles.workspaceId, user.workspaceId));
+    expect(fileRows).toHaveLength(1);
+    const libraryRows = await db
+      .select()
+      .from(schema.savedItems)
+      .where(eq(schema.savedItems.workspaceId, user.workspaceId));
+    expect(libraryRows).toHaveLength(0);
+  });
+
+  it('directly uploads saved items, dedupes exact uploads, and blocks imports before extraction', async () => {
+    const routes = await loadRoutes();
+    const user = await createAuthedUser(routes, 'upload');
+    emails.push(user.email);
+    const pkg = await createPackage(routes, user.cookie);
+    const bytes = new Uint8Array(await readFile(fixturePdfPath));
+
+    const presign = await routes.savedItemUploadPresignPOST(
+      jsonReq('/api/v1/saved-items/uploads/presign', user.cookie, {
+        filename: 'direct-daikin.pdf',
+        byte_size: bytes.byteLength,
+        content_type: 'application/pdf',
+      }),
+    );
+    expect(presign.status).toBe(201);
+    const presignBody = await presign.json();
+    expect(presignBody.storage_key).toContain(`/saved_item_files/`);
+    await storage.putObject({
+      key: presignBody.storage_key,
+      body: bytes,
+      contentType: 'application/pdf',
+    });
+
+    const confirm = await routes.savedItemUploadConfirmPOST(
+      jsonReq('/api/v1/saved-items/uploads/confirm', user.cookie, {
+        storage_key: presignBody.storage_key,
+        original_filename: 'direct-daikin.pdf',
+      }),
+    );
+    expect(confirm.status).toBe(201);
+    const confirmBody = await confirm.json();
+    expect(confirmBody).toMatchObject({
+      duplicate: false,
+      processing_status: 'uploaded',
+      saved_item: { original_filename: 'direct-daikin.pdf' },
+    });
+    expect(routes.queuedJobs).toEqual([
+      expect.objectContaining({
+        name: 'saved_item_process',
+        data: expect.objectContaining({ savedItemId: confirmBody.saved_item.id }),
+      }),
+    ]);
+
+    const importProcessing = await routes.importSavedPOST(
+      jsonReq(`/api/v1/packages/${pkg.id}/saved-items`, user.cookie, {
+        saved_item_ids: [confirmBody.saved_item.id],
+      }),
+      ctx({ id: pkg.id }),
+    );
+    expect(importProcessing.status).toBe(409);
+    await expect(importProcessing.json()).resolves.toMatchObject({
+      error: { code: 'saved_item_not_ready' },
+    });
+
+    const duplicatePresign = await routes.savedItemUploadPresignPOST(
+      jsonReq('/api/v1/saved-items/uploads/presign', user.cookie, {
+        filename: 'direct-daikin-copy.pdf',
+        byte_size: bytes.byteLength,
+        content_type: 'application/pdf',
+      }),
+    );
+    const duplicatePresignBody = await duplicatePresign.json();
+    await storage.putObject({
+      key: duplicatePresignBody.storage_key,
+      body: bytes,
+      contentType: 'application/pdf',
+    });
+    const duplicate = await routes.savedItemUploadConfirmPOST(
+      jsonReq('/api/v1/saved-items/uploads/confirm', user.cookie, {
+        storage_key: duplicatePresignBody.storage_key,
+        original_filename: 'direct-daikin-copy.pdf',
+      }),
+    );
+    expect(duplicate.status).toBe(200);
+    await expect(duplicate.json()).resolves.toMatchObject({
+      duplicate: true,
+      saved_item: { id: confirmBody.saved_item.id },
+      processing_status: 'uploaded',
+    });
+    expect(storage.deletedKeys).toContain(duplicatePresignBody.storage_key);
+
+    const deleted = await routes.savedItemDELETE(
+      authedReq(`/api/v1/saved-items/${confirmBody.saved_item.id}`, user.cookie, {
+        method: 'DELETE',
+      }),
+      ctx({ id: confirmBody.saved_item.id }),
+    );
+    expect(deleted.status).toBe(204);
+    expect(storage.deletedKeys).toContain(presignBody.storage_key);
   });
 
   it('rejects cross-workspace saved item imports', async () => {

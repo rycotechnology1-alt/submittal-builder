@@ -18,6 +18,7 @@ import { runClassifyJob } from './jobs/classify.js';
 import { runExtractJob } from './jobs/extract.js';
 import { runOcrJob } from './jobs/ocr.js';
 import { runRenderExportJob } from './jobs/render-export.js';
+import { runSavedItemProcessJob, type SavedItemProcessJobData } from './jobs/saved-item-process.js';
 import type { JobKind, RenderExportJobData, SourcePdfJobData } from './jobs/common.js';
 
 initSentry();
@@ -46,7 +47,14 @@ const ai = env.anthropicApiKey
   : null;
 
 const ocr = createTextractOcrClient({ region: env.awsRegion });
-const queues = ['ocr', 'classify', 'extract', 'batch_order', 'render_export'] as const;
+const queues = [
+  'ocr',
+  'classify',
+  'extract',
+  'batch_order',
+  'render_export',
+  'saved_item_process',
+] as const;
 
 boss.on('error', (err) => {
   console.error({ level: 'error', component: 'pg-boss', err: String(err) });
@@ -84,10 +92,18 @@ async function enqueueChainedJob(kind: JobKind, data: SourcePdfJobData) {
   });
 }
 
-type JobContext = { workspaceId: string; packageId: string; requestId?: string; sourcePdfId?: string; exportId?: string };
+type JobContext = {
+  workspaceId: string;
+  packageId?: string;
+  requestId?: string;
+  sourcePdfId?: string;
+  exportId?: string;
+  savedItemId?: string;
+};
+type WorkerKind = JobKind | 'saved_item_process';
 
 async function runWithLogging<T>(
-  kind: JobKind,
+  kind: WorkerKind,
   data: JobContext,
   fn: () => Promise<T>,
 ): Promise<T> {
@@ -97,9 +113,10 @@ async function runWithLogging<T>(
     kind,
     request_id: data.requestId ?? null,
     workspace_id: data.workspaceId,
-    package_id: data.packageId,
+    package_id: data.packageId ?? null,
     source_pdf_id: data.sourcePdfId ?? null,
     export_id: data.exportId ?? null,
+    saved_item_id: data.savedItemId ?? null,
   };
   console.log({ level: 'info', msg: 'job_start', ...base });
   try {
@@ -184,31 +201,33 @@ async function registerWorkers() {
     },
   );
 
-  await boss.work<SourcePdfJobData>('extract', { batchSize: env.concurrency.extract }, async (jobs) => {
-    for (const job of jobs) {
-      await runWithLogging('extract', job.data, () =>
-        runExtractJob(
-          {
-            db,
-            storage: requireStorage(),
-            ai: requireAi(),
-            enqueue: async (name, data) => {
-              await enqueueChainedJob(name, data);
+  await boss.work<SourcePdfJobData>(
+    'extract',
+    { batchSize: env.concurrency.extract },
+    async (jobs) => {
+      for (const job of jobs) {
+        await runWithLogging('extract', job.data, () =>
+          runExtractJob(
+            {
+              db,
+              storage: requireStorage(),
+              ai: requireAi(),
+              enqueue: async (name, data) => {
+                await enqueueChainedJob(name, data);
+              },
             },
-          },
-          job.data,
-        ),
-      );
-    }
-  });
+            job.data,
+          ),
+        );
+      }
+    },
+  );
 
   await boss.work<{ workspaceId: string; packageId: string; requestId?: string }>(
     'batch_order',
     async (jobs) => {
       for (const job of jobs) {
-        await runWithLogging('batch_order', job.data, () =>
-          runBatchOrderJob({ db }, job.data),
-        );
+        await runWithLogging('batch_order', job.data, () => runBatchOrderJob({ db }, job.data));
       }
     },
   );
@@ -217,6 +236,23 @@ async function registerWorkers() {
     for (const job of jobs) {
       await runWithLogging('render_export', job.data, () =>
         runRenderExportJob({ db, storage: requireStorage() }, job.data),
+      );
+    }
+  });
+
+  await boss.work<SavedItemProcessJobData>('saved_item_process', async (jobs) => {
+    for (const job of jobs) {
+      await runWithLogging('saved_item_process', job.data, () =>
+        runSavedItemProcessJob(
+          {
+            db,
+            storage: requireStorage(),
+            bucket: env.s3Bucket,
+            ocr,
+            ai: requireAi(),
+          },
+          job.data,
+        ),
       );
     }
   });
@@ -230,7 +266,10 @@ async function queueDepthByTopic() {
 }
 
 const gitSha =
-  process.env.GIT_SHA ?? process.env.FLY_MACHINE_VERSION ?? process.env.VERCEL_GIT_COMMIT_SHA ?? null;
+  process.env.GIT_SHA ??
+  process.env.FLY_MACHINE_VERSION ??
+  process.env.VERCEL_GIT_COMMIT_SHA ??
+  null;
 const release = process.env.SENTRY_RELEASE ?? gitSha;
 
 async function startHealthz(): Promise<http.Server> {
